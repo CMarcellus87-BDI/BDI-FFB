@@ -81,6 +81,8 @@
       const wk = nfl.season_type==='regular' ? `W${nfl.week}` : 'Pre'; $('weekStat').textContent=wk;
       $('statusText').textContent='Sleeper connected'; $('statusSub').textContent=`${la.name||'League A'} + ${lb.name||'League B'}`;
       await Promise.allSettled([loadDraftData(), loadPowerRankings(), loadHomeActivity()]);
+      await renderPlayoffs();
+      if(playoffWeek()>=15) showView('playoffs');
     } catch(e) {
       console.error(e); $('statusText').textContent='Sleeper unavailable'; $('statusSub').textContent='Refresh to retry';
       renderExpectedManagers();
@@ -235,16 +237,146 @@
     $('draftRankList').innerHTML=state.draftGrades.map(g=>`<article class="draft-rank-card" data-gradekey="${g.team.key}"><div class="place">#${g.rank}</div><div><h4>${esc(g.team.name)} <span class="league-pill">${g.team.code}</span></h4><p>Best pick: ${esc(g.best?.name||'—')} · Strength: ${esc(g.strength)}</p></div><div class="grade-big">${g.letter}</div></article>`).join('');
     document.querySelectorAll('[data-gradekey]').forEach(el=>el.addEventListener('click',()=>openDraftReport(el.dataset.gradekey)));
   }
+  function stableHash(text){let h=2166136261;for(const ch of String(text)){h^=ch.charCodeAt(0);h=Math.imul(h,16777619)}return h>>>0}
+  function deterministicPick(arr,key){return arr[stableHash(key)%arr.length]}
+  function pickDelta(p){return p?.adp?Math.round(p.adp-p.overall):null}
+  function pickBlurb(p,type){if(!p)return 'No qualifying pick available.';const d=pickDelta(p), slot=p.overall?`Pick ${p.overall}`:'this selection';
+    if(type==='best'){
+      if(d!=null&&d>=20)return `${slot} landed ${d} spots later than consensus. Apparently everyone else forgot ${p.name} existed.`;
+      if(d!=null&&d>=8)return `${slot} beat consensus by ${d} picks. Nice patience, and the board actually rewarded it.`;
+      return `${slot} paired solid market value with ${fmt(p.proj||0)} projected points.`;
+    }
+    if(type==='reach'){
+      if(d!=null&&d<=-25)return `${Math.abs(d)} picks ahead of consensus. Bold is certainly one word for it.`;
+      if(d!=null&&d<=-10)return `${Math.abs(d)} spots ahead of ADP. Consensus was apparently treated as more of a suggestion.`;
+      return `The largest reach on the roster was relatively mild by draft-room standards.`;
+    }
+    if(type==='mvp')return `${fmt(p.proj||0)} projected points make this the roster's biggest projected scoring engine.`;
+    return '';
+  }
+  function notablePicks(g){
+    const out=[], used=new Set([g.best?.pick?.pick_no,g.reach?.pick?.pick_no,g.mvp?.pick?.pick_no].filter(Boolean));
+    const add=(p,label,blurb)=>{if(!p||used.has(p.pick?.pick_no))return;used.add(p.pick.pick_no);out.push({p,label,blurb})};
+    const withAdp=g.players.filter(p=>p.adp);
+    const steal=[...withAdp].sort((a,b)=>(b.adp-b.overall)-(a.adp-a.overall))[0];
+    if(steal&&pickDelta(steal)>=10)add(steal,'Value Pick',`Fell ${pickDelta(steal)} spots past ADP and still carries ${fmt(steal.proj||0)} projected points.`);
+    const lateUpside=[...g.players].filter(p=>p.overall>60).sort((a,b)=>b.proj-a.proj)[0];
+    add(lateUpside,'Upside Swing',`A later pick with ${fmt(lateUpside?.proj||0)} projected points gives this roster some real ceiling.`);
+    const questionable=[...withAdp].filter(p=>pickDelta(p)<=-12).sort((a,b)=>pickDelta(a)-pickDelta(b))[1];
+    add(questionable,'Questionable',`Went ${Math.abs(pickDelta(questionable)||0)} spots ahead of consensus. This one will get remembered either way.`);
+    const efficient=[...g.players].filter(p=>p.overall>80).sort((a,b)=>(b.proj/Math.max(1,b.overall))-(a.proj/Math.max(1,a.overall)))[0];
+    add(efficient,'Late-Round Value',`${fmt(efficient?.proj||0)} projected points from a late slot is the kind of boring value that wins waiver-free weeks.`);
+    return out.slice(0,3);
+  }
+  function rosterCounts(g){const c={};g.players.forEach(p=>c[p.pos]=(c[p.pos]||0)+1);return c}
+  function verdict(g){
+    const n=state.draftGrades.length,c=rosterCounts(g),bestD=pickDelta(g.best),reachD=pickDelta(g.reach),key=`${g.team.key}-${g.letter}-${g.rank}`;
+    const gradeBanks={
+      'A+':['Annoyingly competent. There really is not much to make fun of here.','Great value, strong construction, and very few questionable decisions. Disgusting.','The draft room has reviewed the tape and unfortunately this was excellent.'],
+      'A':['Excellent work. Please try harder to give the rest of us material next time.','Strong board discipline, strong roster, minimal nonsense. We hate to see it.'],
+      'A-':['You knew what you were doing, which frankly takes some of the fun out of this.','Very good throughout, with just enough imperfection to remain technically human.'],
+      'B+':['A good draft with just enough questionable decision-making to keep you humble.','Strong overall. Nobody needs to panic, including you.'],
+      'B':['Perfectly respectable. Nobody is building a statue, but nobody is calling HR either.','Solid, sensible, and aggressively difficult to make fun of.'],
+      'B-':['There is a good team in here. We just need to figure out where you hid it.','Above water, with a few spots that may require adult supervision.'],
+      'C+':['Some steals, some reaches, and at least one pick we are going to need you to explain.','A mixed bag, but importantly still a bag.'],
+      'C':['Congratulations on assembling a roster of professional football players.','Perfectly average, which is either reassuring or deeply insulting depending on your expectations.'],
+      'C-':['The projections say there is a plan here. We remain committed to finding it.','Concerning in places, interesting in others, definitive in none.'],
+      'D+':['A few good picks are doing an impressive amount of structural work.','There are building blocks here. Several of them are currently holding up the entire building.'],
+      'D':['The draft room was open the entire time, just confirming.','There were warning signs. Then there were more warning signs.'],
+      'D-':['FantasyPros has filed a formal objection.','The good news is waivers open soon.'],
+      'F':['We checked the API twice because this grade seemed unnecessarily cruel.','You have successfully demonstrated why autodraft exists.','There were other draft strategies available.']
+    };
+    let opener=deterministicPick(gradeBanks[g.letter]||gradeBanks.C,key);
+    const reasons=[];
+    if((c.QB||0)>=4&&!rosterSlots().SUPER_FLEX)reasons.push(`${c.QB} quarterbacks for one starting QB slot is an admirably aggressive commitment to optionality.`);
+    if((c.TE||0)>=4)reasons.push(`${c.TE} tight ends suggests either a strategy or an unresolved personal issue.`);
+    if(bestD!=null&&bestD>=15)reasons.push(`${g.best.name} falling ${bestD} spots past ADP was the clearest win.`);
+    if(reachD!=null&&reachD<=-18)reasons.push(`${g.reach.name} went ${Math.abs(reachD)} picks ahead of consensus and will require some explaining.`);
+    reasons.push(`${g.strength} is the roster's strongest room; ${g.weakness} is where the depth chart gets less comfortable.`);
+    if(g.rank===1)reasons.push('Congratulations on winning the portion of fantasy football that famously guarantees absolutely nothing.');
+    if(g.rank===n&&n>1)reasons.push('Someone had to finish last. We appreciate your service.');
+    return `${opener} ${reasons.slice(0,3).join(' ')}`;
+  }
   function openDraftReport(key){
     const g=state.draftGrades.find(x=>x.team.key===key);if(!g)return;
-    const delta=p=>p?.adp?Math.round(p.adp-p.overall):null; const bestD=delta(g.best), reachD=delta(g.reach);
-    openModal(`${g.team.name} · ${g.letter} · #${g.rank} of ${state.draftGrades.length}`,`<div class="report-grid"><div class="metric"><b>${g.components.projectionValue}</b><span>Draft value</span></div><div class="metric"><b>${g.components.adpEfficiency}</b><span>ADP efficiency</span></div><div class="metric"><b>${g.components.rosterConstruction}</b><span>Roster construction</span></div><div class="metric"><b>${g.components.lineupStrength}</b><span>Projected strength</span></div></div><div class="callout-grid"><div class="callout"><h5>🔥 Best Pick</h5><p>${esc(g.best?.name||'—')} ${bestD!=null?`· ${bestD>=0?'+':''}${bestD} picks vs ADP`:''}</p></div><div class="callout"><h5>😬 Biggest Reach</h5><p>${esc(g.reach?.name||'—')} ${reachD!=null?`· ${reachD>=0?'+':''}${reachD} picks vs ADP`:''}</p></div><div class="callout"><h5>💪 Strength</h5><p>${esc(g.strength)} room grades strongest relative to the 20-team BDI field.</p></div><div class="callout"><h5>⚠️ Weakness</h5><p>${esc(g.weakness)} room grades weakest relative to peers.</p></div><div class="callout"><h5>🎯 Draft MVP</h5><p>${esc(g.mvp?.name||'—')} · ${fmt(g.mvp?.proj||0)} projected points</p></div><div class="callout"><h5>📝 Verdict</h5><p>${verdict(g)}</p></div></div>`);
+    const bestD=pickDelta(g.best), reachD=pickDelta(g.reach), talks=notablePicks(g);
+    const talksHtml=talks.length?`<div class="notable-block"><h5>👀 Picks Worth Talking About</h5><div class="notable-list">${talks.map(x=>`<div class="notable-pick"><b>${esc(x.label)} · ${esc(x.p.name)}</b><span>Pick ${x.p.overall}${x.p.adp?` · ADP ${Math.round(x.p.adp)}`:''}</span><p>${esc(x.blurb)}</p></div>`).join('')}</div></div>`:'';
+    const rankTitle=g.rank===1?' · 🏆 Internet Champion':g.rank===state.draftGrades.length&&state.draftGrades.length>1?' · 🪦 Draft Day Disaster':'';
+    openModal(`${g.team.name} · ${g.letter} · #${g.rank} of ${state.draftGrades.length}${rankTitle}`,`<div class="report-grid"><div class="metric"><b>${g.components.projectionValue}</b><span>Draft value</span></div><div class="metric"><b>${g.components.adpEfficiency}</b><span>ADP efficiency</span></div><div class="metric"><b>${g.components.rosterConstruction}</b><span>Roster construction</span></div><div class="metric"><b>${g.components.lineupStrength}</b><span>Projected strength</span></div></div><div class="callout-grid"><div class="callout"><h5>🔥 Best Pick</h5><p><b>${esc(g.best?.name||'—')}</b> ${bestD!=null?`· ${bestD>=0?'+':''}${bestD} picks vs ADP`:''}<br>${esc(pickBlurb(g.best,'best'))}</p></div><div class="callout"><h5>😬 Biggest Reach</h5><p><b>${esc(g.reach?.name||'—')}</b> ${reachD!=null?`· ${reachD>=0?'+':''}${reachD} picks vs ADP`:''}<br>${esc(pickBlurb(g.reach,'reach'))}</p></div><div class="callout"><h5>💪 Strength</h5><p>${esc(g.strength)} room grades strongest relative to the BDI field.</p></div><div class="callout"><h5>⚠️ Weakness</h5><p>${esc(g.weakness)} room grades weakest relative to peers.</p></div><div class="callout"><h5>🎯 Draft MVP</h5><p><b>${esc(g.mvp?.name||'—')}</b><br>${esc(pickBlurb(g.mvp,'mvp'))}</p></div><div class="callout verdict-callout"><h5>📝 Official BDI Verdict</h5><p>${esc(verdict(g))}</p></div></div>${talksHtml}<div class="grade-disclaimer">BDI Draft Grades use frozen consensus redraft rankings, ADP, projections and roster construction to scientifically determine who won fantasy football before any football has been played. Results are therefore unquestionably final.</div>`);
   }
-  function verdict(g){const rank=g.rank, n=state.draftGrades.length;const tier=rank<=3?'one of BDI’s strongest drafts':rank<=Math.ceil(n*.35)?'a strong draft':rank<=Math.ceil(n*.7)?'a balanced draft':'a draft with some ground to make up';return `${tier}, led by a strong ${g.strength} room. ${g.weakness} is the clearest area of concern, while ${g.best?.name||'the best value pick'} provided the biggest ADP win.`}
 
   function openModal(title,body){$('modalTitle').textContent=title;$('modalBody').innerHTML=body;$('modal').classList.add('open')}
   function closeModal(){$('modal').classList.remove('open')}
-  function showView(name){document.querySelectorAll('.view').forEach(v=>v.classList.toggle('active',v.id===`view-${name}`));document.querySelectorAll('.nav button').forEach(b=>b.classList.toggle('active',b.dataset.view===name));if(name==='activity')openActivity();}
+  function playoffWeek(){
+    if(state.nfl?.season_type!=='regular') return 0;
+    return Number(state.nfl?.week||0);
+  }
+  function currentQualifiers(){
+    const a=sortStandings(state.teams.filter(t=>t.code==='A')).slice(0,4);
+    const b=sortStandings(state.teams.filter(t=>t.code==='B')).slice(0,4);
+    return [...a,...b];
+  }
+  function renderRegularPlayoffPicture(){
+    const a=sortStandings(state.teams.filter(t=>t.code==='A'));
+    const b=sortStandings(state.teams.filter(t=>t.code==='B'));
+    const leagueBlock=(code,rows)=>`<div class="playoff-league"><div class="playoff-league-head"><b>League ${code}</b><span>Top 4 qualify</span></div>${rows.map((t,i)=>`<div class="playoff-team-row ${i<4?'in':'bubble'}"><span class="seed">${i+1}</span><div><b>${esc(t.name)}</b><small>${t.wins}-${t.losses} · ${fmt(t.pf)} PF</small></div><span class="playoff-status">${i<4?'IN':'OUT'}</span></div>`).join('')}</div>`;
+    $('playoffPictureTitle').textContent='Current Playoff Teams';
+    $('playoffPictureSub').textContent='Top four in each league qualify';
+    $('playoffPicture').innerHTML=`<div class="playoff-picture-grid">${leagueBlock('A',a)}${leagueBlock('B',b)}</div>`;
+    $('playoffLiveTitle').textContent='Road to the Championship';
+    $('playoffLiveSub').textContent='Live scoring activates in Week 15';
+    $('playoffLiveBadge').textContent='WEEKS 15–17';
+    $('playoffLiveBoard').innerHTML='<div class="empty">Once the playoffs begin, this becomes the live cut-line leaderboard.</div>';
+  }
+  async function matchupScoresForWeek(week){
+    const [a,b]=await Promise.allSettled([sleeper(`/league/${CFG.leagueA.id}/matchups/${week}`),sleeper(`/league/${CFG.leagueB.id}/matchups/${week}`)]);
+    const rows=[];
+    for(const [code,res] of [['A',a],['B',b]]) if(res.status==='fulfilled'){
+      const teamMap=new Map(state.teams.filter(t=>t.code===code).map(t=>[t.rosterId,t]));
+      for(const m of res.value||[]){ const team=teamMap.get(m.roster_id); if(team) rows.push({team,score:Number(m.points||0)}); }
+    }
+    return rows;
+  }
+  async function determinePlayoffField(){
+    // Qualification is based on the official top four from each league. During the postseason,
+    // Sleeper's roster standings remain the source of truth for the regular-season finish.
+    return currentQualifiers();
+  }
+  function liveBoardHTML(rows,advanceCount,label){
+    const sorted=[...rows].sort((a,b)=>b.score-a.score);
+    return `<div class="survivor-board">${sorted.map((x,i)=>`${i===advanceCount?'<div class="cut-line"><span>CUT LINE</span></div>':''}<div class="survivor-row ${i<advanceCount?'advancing':'eliminated'}"><span class="survivor-rank">${i+1}</span><div><b>${esc(x.team.name)}</b><small>League ${x.team.code}</small></div><strong>${fmt(x.score,2)}</strong><span class="survivor-state">${i<advanceCount?'ADVANCING':'OUT'}</span></div>`).join('')}</div><div class="survivor-note">${esc(label)}</div>`;
+  }
+  async function renderPlayoffs(){
+    const wk=playoffWeek();
+    if(!wk || wk<15){ renderRegularPlayoffPicture(); return; }
+    const field=await determinePlayoffField();
+    const keySet=new Set(field.map(t=>t.key));
+    $('playoffPictureTitle').textContent='2026 BDI Playoff Field';
+    $('playoffPictureSub').textContent='Top four from League A + top four from League B';
+    $('playoffPicture').innerHTML=`<div class="qualified-chips">${field.map(t=>`<span><b>${esc(t.name)}</b><small>League ${t.code}</small></span>`).join('')}</div>`;
+    try{
+      const w15=(await matchupScoresForWeek(15)).filter(x=>keySet.has(x.team.key)).sort((a,b)=>b.score-a.score);
+      const survivors15=w15.slice(0,4).map(x=>x.team.key);
+      if(wk===15){
+        $('playoffLiveTitle').textContent='Week 15 · Elite Eight'; $('playoffLiveSub').textContent='Top 4 scores advance'; $('playoffLiveBadge').textContent='LIVE';
+        $('playoffLiveBoard').innerHTML=liveBoardHTML(w15,4,'Eight teams entered. The four highest Week 15 scores survive.'); return;
+      }
+      const w16=(await matchupScoresForWeek(16)).filter(x=>survivors15.includes(x.team.key)).sort((a,b)=>b.score-a.score);
+      const survivors16=w16.slice(0,2).map(x=>x.team.key);
+      if(wk===16){
+        $('playoffLiveTitle').textContent='Week 16 · Final Four'; $('playoffLiveSub').textContent='Top 2 scores advance'; $('playoffLiveBadge').textContent='LIVE';
+        $('playoffLiveBoard').innerHTML=liveBoardHTML(w16,2,'Four remain. The two highest Week 16 scores reach the BDI Championship.'); return;
+      }
+      const w17=(await matchupScoresForWeek(17)).filter(x=>survivors16.includes(x.team.key)).sort((a,b)=>b.score-a.score);
+      $('playoffLiveTitle').textContent='Week 17 · BDI Championship'; $('playoffLiveSub').textContent='Highest score wins'; $('playoffLiveBadge').textContent='CHAMPIONSHIP';
+      if(w17.length){
+        const html=liveBoardHTML(w17,1,'One week. Two finalists. Highest score is the BDI Champion.');
+        $('playoffLiveBoard').innerHTML=html + (w17[0].score>0?`<div class="champion-callout"><span>🏆</span><div><small>Current Championship Leader</small><b>${esc(w17[0].team.name)}</b></div></div>`:'');
+      } else $('playoffLiveBoard').innerHTML='<div class="empty">Championship scoring will appear here when Week 17 begins.</div>';
+    }catch(e){ console.error('Playoff leaderboard',e); $('playoffLiveBoard').innerHTML='<div class="empty">Playoff scoring is temporarily unavailable. Refresh to retry.</div>'; }
+  }
+
+  function showView(name){document.querySelectorAll('.view').forEach(v=>v.classList.toggle('active',v.id===`view-${name}`));document.querySelectorAll('.nav button').forEach(b=>b.classList.toggle('active',b.dataset.view===name));if(name==='activity')openActivity();if(name==='playoffs')renderPlayoffs();}
 
   document.querySelectorAll('.nav button').forEach(b=>b.addEventListener('click',()=>showView(b.dataset.view)));
   document.querySelectorAll('[data-teamfilter]').forEach(b=>b.addEventListener('click',()=>{state.teamFilter=b.dataset.teamfilter;document.querySelectorAll('[data-teamfilter]').forEach(x=>x.classList.toggle('active',x===b));renderTeams();}));

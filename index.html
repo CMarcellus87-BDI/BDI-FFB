@@ -1,7 +1,7 @@
-<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="theme-color" content="#0d1117"><title>BDI Fantasy HQ</title><link rel="stylesheet" href="styles.css?v=0.3.0"></head><body>
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="theme-color" content="#0d1117"><title>BDI Fantasy HQ</title><link rel="stylesheet" href="styles.css?v=0.5.0"></head><body>
 <div class="app" id="app">
   <header class="topbar"><div class="brand"><img src="bdi-logo.png" alt="BDI logo"><div><div class="eyebrow">2026 Fantasy Football</div><h1>BDI Fantasy HQ</h1><p>Two Sleeper leagues. One office-wide competition.</p></div></div><div class="status"><strong id="statusText">Connecting to Sleeper…</strong><br><span id="statusSub">League A + League B</span></div></header>
-  <nav class="nav" aria-label="Primary"><button data-view="home" class="active">Home</button><button data-view="teams">Teams</button><button data-view="draft">Draft Grades</button><button data-view="activity">Activity</button></nav>
+  <nav class="nav" aria-label="Primary"><button data-view="home" class="active">Home</button><button data-view="teams">Teams</button><button data-view="draft">Draft Grades</button><button data-view="activity">Activity</button><button data-view="playoffs">Playoffs</button></nav>
 
   <main>
     <section class="view active" id="view-home">
@@ -14,9 +14,55 @@
 
     <section class="view" id="view-draft"><div class="draft-banner"><div class="eyebrow">Frozen methodology</div><h3>BDI Draft Grader</h3><p style="margin:0;color:var(--muted)">35% projection value vs. draft slot · 25% ADP efficiency · 25% roster construction · 15% projected optimal-lineup strength. Each completed league publishes immediately; after both drafts, all 20 teams are re-normalized together for the overall BDI ranking.</p></div><div id="draftStatus" class="notice">Checking Sleeper drafts and the FantasyPros snapshot…</div><div class="draft-rank-list" id="draftRankList" style="margin-top:16px"></div></section>
 
+
+    <section class="view" id="view-playoffs">
+      <div class="playoff-hero">
+        <div>
+          <div class="eyebrow">2026 BDI Championship</div>
+          <h2>8 teams. 3 weeks. Highest scores survive.</h2>
+          <p>Top four teams from League A and top four from League B qualify. There are no head-to-head playoff matchups — every round is a combined BDI scoring leaderboard.</p>
+        </div>
+        <div class="playoff-path" aria-label="Playoff progression">
+          <span>20</span><b>→</b><span>8</span><b>→</b><span>4</span><b>→</b><span>2</span><b>→</b><span class="champion-node">🏆 1</span>
+        </div>
+      </div>
+
+      <div class="playoff-round-grid">
+        <article class="round-card"><div class="round-week">WEEK 15</div><h3>Elite Eight</h3><p>8 qualifiers compete. <b>Top 4 scores advance.</b></p></article>
+        <article class="round-card"><div class="round-week">WEEK 16</div><h3>Final Four</h3><p>4 survivors compete. <b>Top 2 scores advance.</b></p></article>
+        <article class="round-card final"><div class="round-week">WEEK 17</div><h3>BDI Championship</h3><p>2 finalists compete. <b>Highest score wins.</b></p></article>
+      </div>
+
+      <div class="playoff-grid">
+        <section class="panel">
+          <div class="panel-header"><div><h3 id="playoffPictureTitle">Current Playoff Teams</h3><div class="subtle" id="playoffPictureSub">Top four in each league qualify</div></div><span class="league-pill">LIVE PICTURE</span></div>
+          <div id="playoffPicture"><div class="empty">Loading playoff picture…</div></div>
+        </section>
+        <section class="panel">
+          <div class="panel-header"><div><h3>Playoff Rules</h3><div class="subtle">Simple on purpose</div></div></div>
+          <div class="rules-list">
+            <div><b>Qualification</b><span>Top 4 finishers in League A + top 4 finishers in League B.</span></div>
+            <div><b>Advancement</b><span>Weekly fantasy score only. No head-to-head playoff matchups.</span></div>
+            <div><b>Week 15</b><span>8 teams → 4 highest scores advance.</span></div>
+            <div><b>Week 16</b><span>4 teams → 2 highest scores advance.</span></div>
+            <div><b>Week 17</b><span>2 teams → highest score is BDI Champion.</span></div>
+          </div>
+        </section>
+      </div>
+
+      <section class="panel playoff-live-panel" style="margin-top:16px">
+        <div class="panel-header"><div><h3 id="playoffLiveTitle">Road to the Championship</h3><div class="subtle" id="playoffLiveSub">Live scoring activates in Week 15</div></div><span class="tag" id="playoffLiveBadge">WEEKS 15–17</span></div>
+        <div id="playoffLiveBoard"><div class="empty">Once the playoffs begin, this becomes the live cut-line leaderboard.</div></div>
+      </section>
+
+      <div class="playoff-why">
+        <b>Why Weeks 15–17?</b> Week 14 still contains NFL byes. Week 18 creates significant starter-rest risk. The BDI Championship therefore runs Weeks 15 through 17.
+      </div>
+    </section>
+
     <section class="view" id="view-activity"><div class="panel"><div class="panel-header"><div><h3>Combined BDI Activity</h3><div class="subtle">Trades · waivers · free-agent moves · drops</div></div><select id="activityWeek" aria-label="Activity week"></select></div><div class="activity-toolbar"><button class="filter-btn active" data-activityfilter="all">All</button><button class="filter-btn" data-activityfilter="trade">Trades</button><button class="filter-btn" data-activityfilter="waiver">Waivers</button><button class="filter-btn" data-activityfilter="free_agent">Adds/Drops</button><button class="filter-btn" data-activityfilter="A">League A</button><button class="filter-btn" data-activityfilter="B">League B</button></div><div class="activity-list" id="activityList"><div class="empty">Open this tab after league activity begins.</div></div></section>
   </main>
-  <div class="footer">BDI Fantasy HQ · PRE-DRAFT BUILD v0.3.0 · UI REFRESH · Sleeper is the league source of truth</div>
+  <div class="footer">BDI Fantasy HQ · PRE-DRAFT BUILD v0.5.0 · PLAYOFFS · Sleeper is the league source of truth</div>
 </div>
 <div class="modal" id="modal"><div class="modal-card"><div class="modal-head"><h3 id="modalTitle">Details</h3><button class="close" id="modalClose" aria-label="Close">×</button></div><div id="modalBody" style="margin-top:14px"></div></div></div>
-<script src="config.js?v=0.3.0"></script><script src="app.js?v=0.3.0"></script></body></html>
+<script src="config.js?v=0.5.0"></script><script src="app.js?v=0.5.0"></script></body></html>

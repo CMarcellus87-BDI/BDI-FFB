@@ -1,4 +1,4 @@
-# BDI Fantasy HQ — Pre-Draft Build v0.3.0
+# BDI Fantasy HQ — Pre-Draft Build v0.4.0
 
 A lightweight GitHub Pages site that combines BDI's two 10-team Sleeper redraft leagues into one shared experience.
 
@@ -83,3 +83,20 @@ Before all managers join, the expected BDI names are stored in `config.js`. Once
 - Stronger sports-style hero, standings, power-ranking and draft-grade presentation.
 - Improved team cards, activity feed, modals and mobile bottom navigation.
 - No data logic or grading methodology changes.
+
+
+## v0.4 Draft personality pass
+- Deterministic grade-specific BDI verdict/snark bank.
+- Rich Best Pick, Biggest Reach, and Draft MVP blurbs driven by ADP/projection data.
+- Adds up to three Picks Worth Talking About per team.
+- Adds Internet Champion / Draft Day Disaster treatments for first and last place.
+- Grading math and FantasyPros snapshot methodology are unchanged.
+
+
+## 2026 BDI Playoffs
+- Top four teams in League A and top four teams in League B qualify.
+- Week 15: 8 teams, top 4 weekly scores advance.
+- Week 16: 4 teams, top 2 weekly scores advance.
+- Week 17: 2 teams, highest weekly score wins the BDI Championship.
+- No head-to-head playoff matchups.
+- The Playoffs page shows the current top-four cut line during the regular season and becomes the default landing page beginning in Week 15.
