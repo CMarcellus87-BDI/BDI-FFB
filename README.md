@@ -1,4 +1,4 @@
-# BDI Fantasy HQ — Pre-Draft Build v0.2.0
+# BDI Fantasy HQ — Pre-Draft Build v0.3.0
 
 A lightweight GitHub Pages site that combines BDI's two 10-team Sleeper redraft leagues into one shared experience.
 
@@ -76,3 +76,10 @@ Before all managers join, the expected BDI names are stored in `config.js`. Once
 - Each completed league immediately publishes its own 1–10 grades.
 - Once both drafts are complete, grades are recalculated across all 20 teams and the overall BDI 1–20 ranking publishes.
 - Every stage uses the same frozen FantasyPros snapshot.
+
+
+## v0.3 UI refresh
+- Reworked the visual system around BDI black/white/electric green.
+- Stronger sports-style hero, standings, power-ranking and draft-grade presentation.
+- Improved team cards, activity feed, modals and mobile bottom navigation.
+- No data logic or grading methodology changes.
