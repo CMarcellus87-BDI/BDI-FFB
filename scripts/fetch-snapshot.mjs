@@ -169,9 +169,18 @@ async function fetchRankings(type) {
       const name = nameOf(row);
       if (!name) continue;
       const pos = posOf(row);
+      /* Captured but not yet used. These describe how settled the panel was on
+       * draft day, and that is not recoverable later — pulling rank_std next
+       * week would be next week's disagreement, not Thursday's. Cheap to store
+       * now, impossible to backfill. */
       const rec = (out[scoring][keyOf(name, pos)] ||= {
         name, position: pos, team: teamOf(row), fpid: row.player_id ?? row.fpid,
-        bye: firstNumber(row, ['player_bye_week', 'bye_week', 'bye'])[0]
+        bye: firstNumber(row, ['player_bye_week', 'bye_week', 'bye'])[0],
+        rank_std: firstNumber(row, ['rank_std'])[0],
+        rank_min: firstNumber(row, ['rank_min'])[0],
+        rank_max: firstNumber(row, ['rank_max'])[0],
+        tier: firstNumber(row, ['tier'])[0],
+        pos_rank: typeof row.pos_rank === 'string' ? row.pos_rank : null
       });
       const [adp, adpField] = firstNumber(row, ADP_FIELDS);
       const [ecr, ecrField] = firstNumber(row, ECR_FIELDS);
@@ -245,6 +254,9 @@ async function build() {
       const r = byKey[k];
       if (!base.name && r) base = { name: r.name, position: r.position, team: r.team, fpid: r.fpid };
       if (base.bye == null && r && r.bye != null) base.bye = r.bye;
+      for (const f of ['rank_std', 'rank_min', 'rank_max', 'tier', 'pos_rank']) {
+        if (base[f] == null && r && r[f] != null) base[f] = r[f];
+      }
       base[`adp_${scoring.toLowerCase()}`] = r?.adp ?? null;
       base[`ecr_${scoring.toLowerCase()}`] = r?.ecr ?? null;
     }
@@ -255,12 +267,15 @@ async function build() {
   const withPoints = players.filter(p => has(p, 'points')).length;
   const withAdp = players.filter(p => has(p, 'adp')).length;
   const withBye = players.filter(p => p.bye != null).length;
+  const withSpread = players.filter(p => p.rank_std != null).length;
+  const withTier = players.filter(p => p.tier != null).length;
   const scoringVaries = players.some(p => p.points_ppr && p.points_std && p.points_ppr !== p.points_std);
 
   console.log(`\n  players: ${players.length}`);
   console.log(`  with projected points: ${withPoints}   (std/half/ppr from ` +
     `${projFields.points_std_field || '?'}/${projFields.points_half_field || '?'}/${projFields.points_ppr_field || '?'})`);
   console.log(`  with consensus rank: ${withAdp}   (field: ${rankFields.adp_field || 'NONE FOUND'})`);
+  console.log(`  with consensus spread: ${withSpread}   with tier: ${withTier}   (stored for later use)`);
   console.log(`  with bye week: ${withBye}${withBye < 200 ? '   <-- bye-week penalties will be skipped' : ''}`);
 
   // Per position, because a whole position quietly arriving without points is
