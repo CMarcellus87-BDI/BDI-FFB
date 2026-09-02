@@ -152,19 +152,16 @@
     const rows = sortStandings(state.teams.filter(t => t.code === code));
     const target = $(code === 'A' ? 'standingsA' : 'standingsB');
     if (!rows.length) {
-      target.innerHTML = `<tr><td colspan="5" class="cell-empty">Waiting for managers to claim rosters in Sleeper.</td></tr>`;
+      target.innerHTML = `<tr><td colspan="5" class="cell-empty">Waiting for managers to claim rosters.</td></tr>`;
       return;
     }
     const cut = CUT();
-    target.innerHTML = rows.map((t, i) => {
-      const line = i === cut - 1 ? ' cutline' : '';
-      return `<tr class="${i < cut ? 'in-hunt' : ''}${line}">
-        <td class="rank">${i + 1}</td>
-        <td><b>${esc(t.name)}</b></td>
-        <td>${t.wins}-${t.losses}${t.ties ? `-${t.ties}` : ''}</td>
-        <td>${fmt(t.pf)}</td>
-        <td class="hide-mobile">${fmt(t.pa)}</td></tr>`;
-    }).join('');
+    target.innerHTML = rows.map((t, i) => `<tr class="${i < cut ? 'in-hunt' : ''}${i === cut - 1 ? ' cutline' : ''}">
+      <td class="seed">${i + 1}</td>
+      <td class="team">${esc(t.name)}</td>
+      <td class="rec">${t.wins}-${t.losses}${t.ties ? `-${t.ties}` : ''}</td>
+      <td class="n">${fmt(t.pf)}</td>
+      <td class="n hide-mobile">${fmt(t.pa)}</td></tr>`).join('');
   }
 
   function renderTeams() {
@@ -176,14 +173,15 @@
       grid.innerHTML = emptyState('No teams yet', 'Teams appear as managers claim rosters in Sleeper.');
       return;
     }
-    const gradeFor = key => state.grades.find(g => g.team.key === key);
     grid.innerHTML = list.map(t => {
-      const g = gradeFor(t.key);
-      return `<button class="team-card" type="button" data-teamkey="${esc(t.key)}">
-        <span class="league-pill">League ${t.code}</span>
-        ${g ? `<span class="grade-chip tier-${g.tier}">${g.letter}</span>` : ''}
+      const g = state.grades.find(x => x.team.key === t.key);
+      return `<button class="team-card league-${t.code.toLowerCase()}" type="button" data-teamkey="${esc(t.key)}">
+        <div class="top">
+          <span class="pill ${t.code.toLowerCase()}">${t.code}</span>
+          ${g ? `<span class="grade-chip tier-${g.tier}">${g.letter}</span>` : ''}
+        </div>
         <h4>${esc(t.name)}</h4>
-        <p>${t.wins}-${t.losses} · ${fmt(t.pf)} points · ${t.players.length} rostered</p>
+        <div class="line"><span>${t.wins}-${t.losses}</span><em>${fmt(t.pf)} PF</em><em>${t.players.length} rostered</em></div>
       </button>`;
     }).join('');
     grid.querySelectorAll('[data-teamkey]')
@@ -208,19 +206,37 @@
       a.name.localeCompare(b.name));
 
     const g = state.grades.find(x => x.team.key === key);
-    const head = `<div class="mini-grid modal-stats">
-      <div class="mini-stat"><b>${t.wins}-${t.losses}</b><span>Record</span></div>
-      <div class="mini-stat"><b>${fmt(t.pf)}</b><span>Points for</span></div>
-      <div class="mini-stat"><b>${fmt(t.pa)}</b><span>Points against</span></div>
-      <div class="mini-stat"><b class="tier-${g ? g.tier : 'c'}">${g ? g.letter : '—'}</b><span>Draft grade</span></div>
+    const head = `<div class="report-grid">
+      <div class="metric"><b>${t.wins}-${t.losses}</b><span>Record</span></div>
+      <div class="metric"><b>${fmt(t.pf)}</b><span>Points for</span></div>
+      <div class="metric"><b>${fmt(t.pa)}</b><span>Points against</span></div>
+      <div class="metric"><b class="tier-${g ? g.tier : 'b'}">${g ? g.letter : '\u2014'}</b><span>Draft grade</span></div>
     </div>`;
     const body = rows.length
       ? `<div class="roster-list">${rows.map(p => `<div class="roster-player">
+          <span class="pos-tag pos-${esc(p.pos || 'NA')}">${esc(p.pos || '--')}</span>
           <b>${esc(p.name)}</b>
-          <span>${esc(p.pos || '—')} · ${esc(p.team || 'FA')}${p.starter ? ' · starter' : ''}${p.reserve ? ' · IR' : ''}${p.taxi ? ' · taxi' : ''}</span>
+          <small>${esc(p.team || 'FA')}${p.starter ? ' \u00b7 ST' : ''}${p.reserve ? ' \u00b7 IR' : ''}${p.taxi ? ' \u00b7 TX' : ''}</small>
         </div>`).join('')}</div>`
-      : emptyState('Nothing rostered yet', 'This roster fills in once the draft runs.');
+      : emptyState('Nothing rostered yet', 'This fills in once the draft runs.');
     $('modalBody').innerHTML = head + body;
+  }
+
+  /** The ticker is the hero: live numbers, not a sentence nobody rereads. */
+  function renderTicker() {
+    const joined = state.teams.filter(t => t.ownerId).length;
+    $('joinedStat').textContent = `${joined}/${state.teams.length || 20}`;
+    const regular = state.nfl && state.nfl.season_type === 'regular';
+    $('weekStat').textContent = regular ? `Week ${state.nfl.week}` : 'Pre';
+    $('weekSub').textContent = regular ? `${CFG.season} regular season` : 'Preseason';
+    for (const code of ['A', 'B']) {
+      const top = sortStandings(state.teams.filter(t => t.code === code))[0];
+      const played = top && (top.wins + top.losses + top.ties) > 0;
+      $(`leader${code}`).textContent = played ? top.name : '\u2014';
+      $(`leader${code}Sub`).textContent = played
+        ? `${top.wins}-${top.losses} \u00b7 ${fmt(top.pf)} PF`
+        : (top ? 'No games played' : 'Waiting on rosters');
+    }
   }
 
   /* ---------------------------------------------------------------- boot */
@@ -240,9 +256,7 @@
 
       buildTeams();
       renderStandings('A'); renderStandings('B'); renderTeams();
-      $('teamCount').textContent = state.teams.length || 20;
-      $('joinedStat').textContent = `${state.teams.filter(t => t.ownerId).length}/${state.teams.length || 20}`;
-      $('weekStat').textContent = state.nfl.season_type === 'regular' ? `W${state.nfl.week}` : 'Pre';
+      renderTicker();
       $('statusText').textContent = 'Sleeper connected';
       $('statusSub').textContent = `${la.name || 'League A'} + ${lb.name || 'League B'}`;
       $('app').classList.remove('booting');
@@ -251,6 +265,7 @@
       // and running these concurrently used to lose that race.
       await loadDraftData();
       renderTeams();
+      renderTicker();
       await Promise.allSettled([loadPowerRankings(), loadHomeActivity()]);
 
       routeFromHash();
@@ -358,12 +373,12 @@
     });
     metrics.sort((a, b) => b.score - a.score);
 
-    $('powerMethod').textContent = 'Points 40 · record 30 · last three weeks 20 · all-play 10';
+    $('powerMethod').textContent = 'Points 40 / record 30 / last three 20 / all-play 10';
     $('powerList').innerHTML = metrics.slice(0, 5).map((x, i) => `
-      <div class="power-row">
-        <div class="num">${i + 1}</div>
-        <div><b>${esc(x.team.name)}</b><small>League ${x.team.code} · ${x.team.wins}-${x.team.losses} · ${fmt(x.team.pf)} points</small></div>
-        <span class="tag">${fmt(x.score, 0)}</span>
+      <div class="row power-row">
+        <span class="rank">${i + 1}</span>
+        <div><b>${esc(x.team.name)}</b><small>${x.team.wins}-${x.team.losses} \u00b7 ${fmt(x.team.pf)} PF</small></div>
+        <span class="pill ${x.team.code.toLowerCase()}">${x.team.code}</span>
       </div>`).join('');
   }
 
@@ -373,11 +388,11 @@
         'Rankings appear after Week 1. Until then the draft grades are the closest thing to a pecking order.');
       return;
     }
-    $('powerMethod').textContent = 'Preseason, ordered by draft grade';
+    $('powerMethod').textContent = 'Preseason, by draft grade';
     $('powerList').innerHTML = state.grades.slice(0, 5).map((x, i) => `
-      <div class="power-row">
-        <div class="num">${i + 1}</div>
-        <div><b>${esc(x.team.name)}</b><small>League ${x.team.code} · draft grade ${x.letter}</small></div>
+      <div class="row power-row">
+        <span class="rank">${i + 1}</span>
+        <div><b>${esc(x.team.name)}</b><small>League ${x.team.code}</small></div>
         <span class="grade-chip tier-${x.tier}">${x.letter}</span>
       </div>`).join('');
   }
@@ -458,10 +473,9 @@
   function renderActivityItems(items, target, emptyHint) {
     if (!items.length) { target.innerHTML = emptyState('Nothing here yet', emptyHint); return; }
     target.innerHTML = items.map(tx => `
-      <div class="activity-item type-${esc(tx.type || 'other')}">
-        <span class="league-pill">League ${tx.code}</span>
+      <div class="move type-${esc(tx.type || 'other')}">
         ${describeTx(tx)}
-        <small>${new Date(tx.status_updated || tx.created || Date.now()).toLocaleString()}</small>
+        <small>League ${tx.code} \u00b7 ${new Date(tx.status_updated || tx.created || Date.now()).toLocaleString()}</small>
       </div>`).join('');
   }
 
@@ -541,6 +555,14 @@
     const completeA = draftComplete(A), completeB = draftComplete(B);
     renderBoard();
 
+    // The drafts cell is the most-watched number on the page this week.
+    const done = [completeA, completeB].filter(Boolean).length;
+    const live = [A, B].filter(d => d && d.status === 'drafting').length;
+    $('draftStat').textContent = live ? 'On the clock' : done === 2 ? 'Complete' : done === 1 ? '1 of 2 done' : 'Not started';
+    $('draftStatSub').textContent = live
+      ? `${live} draft${live > 1 ? 's' : ''} running now`
+      : done === 2 ? 'Both leagues drafted' : 'Grades publish automatically';
+
     const snapshotReady = state.fp && state.fp.status === 'ready' && (state.fp.players || []).length > 0;
     if (!snapshotReady) {
       setDraftStatus(
@@ -595,13 +617,14 @@
       `Frozen snapshot ${esc(state.fp.generated_at || 'unknown')}.`, 'notice ok');
     $('snapshotHealth').innerHTML = matchRateHTML();
     $('draftRankList').innerHTML = state.grades.map(g => `
-      <button class="draft-rank-card tier-${g.tier}" type="button" data-gradekey="${esc(g.team.key)}">
-        <div class="place">${g.rank}</div>
+      <button class="row grade-row" type="button" data-gradekey="${esc(g.team.key)}">
+        <span class="place">${g.rank}</span>
         <div>
-          <h4>${esc(g.team.name)} <span class="league-pill">${g.team.code}</span></h4>
-          <p>Best value ${esc(g.best ? g.best.name : '—')} · strongest at ${esc(g.strength)}</p>
+          <h4>${esc(g.team.name)}</h4>
+          <small>Best value ${esc(g.best ? g.best.name : '\u2014')} \u00b7 strongest at ${esc(g.strength)}</small>
         </div>
-        <div class="grade-big tier-${g.tier}">${g.letter}</div>
+        <span class="pill ${g.team.code.toLowerCase()}">${g.team.code}</span>
+        <span class="grade-big tier-${g.tier}">${g.letter}</span>
       </button>`).join('');
     $('draftRankList').querySelectorAll('[data-gradekey]')
       .forEach(el => el.addEventListener('click', () => openDraftReport(el.dataset.gradekey)));
@@ -638,6 +661,7 @@
           nfl: (p.metadata && p.metadata.team) || '',
           team: team ? team.name : `Roster ${p.roster_id}`,
           teamKey: team ? team.key : null,
+          draft_slot: p.draft_slot, rosterId: p.roster_id,
           adp: fp ? G.adpOf(fp, code_) : null,
           proj: fp ? G.projPoints(fp, code_) : null
         });
@@ -646,24 +670,54 @@
     return out;
   }
 
-  function renderBoard() {
-    const picks = allPicks();
-    const wrap = $('boardList');
-    if (!picks.length) {
-      wrap.innerHTML = emptyState('The board is empty',
-        'Picks stream in live as each draft runs. Refresh during the draft to follow along.');
-      $('boardMeta').textContent = 'Waiting on the first pick';
-      return;
+  /** Column for the grid: Sleeper's own draft slot, falling back to roster id. */
+  const slotOf = p => Number(p.draft_slot ?? p.rosterId ?? 0) || 0;
+
+  function pickCellHTML(p) {
+    const delta = p.adp !== null ? Math.round(p.adp - p.overall) : null;
+    const tone = delta === null ? '' : delta >= 10 ? 'steal' : delta <= -10 ? 'reach' : '';
+    return `<span class="pick-no">${p.overall}</span>
+      <b class="pick-name">${esc(p.name)}</b>
+      <span class="pick-meta"><span class="pos-tag pos-${esc(p.pos || 'NA')}">${esc(p.pos || '--')}</span>
+      ${p.nfl ? esc(p.nfl) : ''}${delta === null ? '' : ` <em class="${tone}">${signed(delta)}</em>`}</span>`;
+  }
+
+  /** The physical draft board: a column per slot, a row per round. */
+  function renderBoardGrid(picks) {
+    const wrap = $('boardGrid');
+    const leagues = state.boardFilter === 'all' ? ['A', 'B'] : [state.boardFilter];
+    const out = [];
+    for (const code of leagues) {
+      const mine = picks.filter(p => p.code === code);
+      if (!mine.length) continue;
+      const slots = [...new Set(mine.map(slotOf))].sort((x, y) => x - y);
+      const rounds = [...new Set(mine.map(p => p.round))].sort((x, y) => x - y);
+      const byCell = new Map(mine.map(p => [`${p.round}:${slotOf(p)}`, p]));
+      const label = new Map();
+      for (const p of mine) if (!label.has(slotOf(p))) label.set(slotOf(p), p.team);
+
+      const cells = [`<div class="dboard-cell rnd head"></div>`];
+      for (const s of slots) cells.push(`<div class="dboard-cell head">${esc(label.get(s) || `Slot ${s}`)}</div>`);
+      for (const r of rounds) {
+        cells.push(`<div class="dboard-cell rnd">${r}</div>`);
+        for (const s of slots) {
+          const p = byCell.get(`${r}:${s}`);
+          if (!p) { cells.push('<div class="dboard-cell empty-cell"></div>'); continue; }
+          cells.push(`<div class="dboard-cell pos-col-${esc(p.pos || 'NA')}"${p.teamKey ? ` data-boardteam="${esc(p.teamKey)}"` : ''}>${pickCellHTML(p)}</div>`);
+        }
+      }
+      out.push(`<div class="dboard-title">League ${code}</div>
+        <div class="dboard" style="grid-template-columns:46px repeat(${slots.length},minmax(132px,1fr))">${cells.join('')}</div>`);
     }
-    const filtered = picks.filter(p => state.boardFilter === 'all' || p.code === state.boardFilter);
+    wrap.innerHTML = out.join('');
+    return out.length > 0;
+  }
+
+  function renderBoardList(picks) {
+    const wrap = $('boardList');
     const sorted = state.boardSort === 'value'
-      ? [...filtered].sort((a, b) => ((b.adp || 0) - b.overall) - ((a.adp || 0) - a.overall))
-      : [...filtered].sort((a, b) => a.overall - b.overall);
-
-    const withAdp = filtered.filter(p => p.adp !== null).length;
-    $('boardMeta').textContent =
-      `${filtered.length} picks${withAdp ? ` · ${withAdp} matched to consensus rank` : ' · rank comparison unlocks with the snapshot'}`;
-
+      ? [...picks].sort((x, y) => ((y.adp || 0) - y.overall) - ((x.adp || 0) - x.overall))
+      : [...picks].sort((x, y) => x.overall - y.overall);
     let round = null;
     const html = [];
     for (const p of sorted) {
@@ -672,18 +726,40 @@
         html.push(`<div class="board-round">Round ${round}</div>`);
       }
       const delta = p.adp !== null ? Math.round(p.adp - p.overall) : null;
-      const tone = delta === null ? '' : delta >= 10 ? 'steal' : delta <= -10 ? 'reach' : 'fair';
-      html.push(`<div class="board-pick ${tone}"${p.teamKey ? ` data-boardteam="${esc(p.teamKey)}"` : ''}>
+      const tone = delta === null ? '' : delta >= 10 ? 'steal' : delta <= -10 ? 'reach' : '';
+      html.push(`<button type="button" class="board-pick pos-col-${esc(p.pos || 'NA')} ${tone}"${p.teamKey ? ` data-boardteam="${esc(p.teamKey)}"` : ''}>
         <span class="board-no">${p.overall}</span>
-        <div class="board-who">
-          <b>${esc(p.name)}</b>
-          <small>${esc(p.pos || '—')}${p.nfl ? ` · ${esc(p.nfl)}` : ''} · ${esc(p.team)} <span class="league-pill">${p.code}</span></small>
-        </div>
-        <span class="board-delta">${delta === null ? '' : `${signed(delta)} vs consensus`}</span>
-      </div>`);
+        <span class="pos-tag pos-${esc(p.pos || 'NA')}">${esc(p.pos || '--')}</span>
+        <span class="board-who"><b>${esc(p.name)}</b><small>${p.nfl ? esc(p.nfl) + ' \u00b7 ' : ''}${esc(p.team)} \u00b7 ${p.code}</small></span>
+        <span class="board-delta">${delta === null ? '' : `${signed(delta)}`}</span>
+      </button>`);
     }
     wrap.innerHTML = html.join('');
-    wrap.querySelectorAll('[data-boardteam]')
+  }
+
+  function renderBoard() {
+    const all = allPicks();
+    const picks = all.filter(p => state.boardFilter === 'all' || p.code === state.boardFilter);
+    if (!picks.length) {
+      $('boardGrid').innerHTML = '';
+      $('boardList').classList.remove('has-grid');
+      $('boardList').innerHTML = emptyState('The board is empty',
+        'Picks appear live as each draft runs. Reload during the draft to follow along.');
+      $('boardMeta').textContent = 'Waiting on the first pick';
+      return;
+    }
+    const matched = picks.filter(p => p.adp !== null).length;
+    $('boardMeta').textContent = `${picks.length} picks` +
+      (matched ? ` \u00b7 ${matched} matched to consensus rank` : ' \u00b7 rank comparison unlocks with the snapshot');
+
+    // The grid only makes sense in draft order; sorting by value means the list.
+    const wantGrid = state.boardSort === 'pick';
+    const gridDrawn = wantGrid && renderBoardGrid(picks);
+    if (!wantGrid) $('boardGrid').innerHTML = '';
+    renderBoardList(picks);
+    $('boardList').classList.toggle('has-grid', gridDrawn);
+
+    document.querySelectorAll('[data-boardteam]')
       .forEach(el => el.addEventListener('click', () => openTeam(el.dataset.boardteam)));
   }
 
@@ -882,7 +958,7 @@
       <div class="playoff-league-head"><b>League ${code}</b><span>Top ${cut} qualify</span></div>
       ${rows.map((t, i) => `<div class="playoff-team-row ${i < cut ? 'in' : 'bubble'}">
         <span class="seed">${i + 1}</span>
-        <div><b>${esc(t.name)}</b><small>${t.wins}-${t.losses} · ${fmt(t.pf)} points</small></div>
+        <div><b>${esc(t.name)}</b><small>${t.wins}-${t.losses} \u00b7 ${fmt(t.pf)} PF</small></div>
         <span class="playoff-status">${i < cut ? 'In' : 'Out'}</span>
       </div>`).join('')}</div>`;
     $('playoffPictureTitle').textContent = 'Where the field stands';
@@ -892,7 +968,7 @@
       ${block('B', sortStandings(state.teams.filter(t => t.code === 'B')))}</div>`;
     $('playoffLiveTitle').textContent = 'Road to the championship';
     $('playoffLiveSub').textContent = 'Live scoring starts in Week 15';
-    $('playoffLiveBadge').textContent = 'Weeks 15–17';
+    $('playoffLiveBadge').textContent = `Weeks ${playoffCfg().rounds[0].week}\u2013${playoffCfg().rounds[playoffCfg().rounds.length - 1].week}`;
     $('playoffLiveBoard').innerHTML = emptyState('Not yet',
       'This becomes the live cut-line leaderboard when the playoffs begin.');
   }
@@ -938,7 +1014,7 @@
     $('playoffPictureTitle').textContent = `${CFG.season} BDI playoff field`;
     $('playoffPictureSub').textContent = `Seeded on the standings through Week ${cfg.qualifyThroughWeek}`;
     $('playoffPicture').innerHTML = `<div class="qualified-chips">${field.map(t => `
-      <span><b>${esc(t.name)}</b><small>League ${t.code} · ${t.seedWins ?? t.wins}-${t.seedLosses ?? t.losses}</small></span>
+      <span><b>${esc(t.name)}</b><small>${t.code} · ${t.seedWins ?? t.wins}-${t.seedLosses ?? t.losses}</small></span>
     `).join('')}</div>`;
 
     try {

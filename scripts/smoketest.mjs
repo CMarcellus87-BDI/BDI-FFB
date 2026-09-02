@@ -134,6 +134,7 @@ test('boots clean and fills both standings tables', async () => {
   assert.equal(doc.querySelectorAll('#standingsA tr').length, 10);
   assert.equal(doc.querySelectorAll('#standingsB tr').length, 10);
   assert.equal(text(doc, 'joinedStat'), '20/20');
+  assert.notEqual(text(doc, 'leaderA'), '\u2014', 'the ticker should name a league A leader');
   assert.equal(doc.querySelectorAll('#teamGrid .team-card').length, 20);
 });
 
@@ -146,7 +147,7 @@ test('the playoff cut line is drawn after the fourth team', async () => {
 
 test('grades publish for all twenty teams and spread across letters', async () => {
   const { w, doc } = await boot();
-  const cards = doc.querySelectorAll('#draftRankList .draft-rank-card');
+  const cards = doc.querySelectorAll('#draftRankList .grade-row');
   assert.equal(cards.length, 20);
   assert.match(text(doc, 'draftStatus'), /Overall BDI, 1 to 20/);
   const letters = new Set([...doc.querySelectorAll('.grade-big')].map(e => e.textContent.trim()));
@@ -158,7 +159,7 @@ test('grades publish for all twenty teams and spread across letters', async () =
 
 test('a draft report opens with real component grades, not four Cs', async () => {
   const { doc } = await boot();
-  doc.querySelector('#draftRankList .draft-rank-card').dispatchEvent(
+  doc.querySelector('#draftRankList .grade-row').dispatchEvent(
     new doc.defaultView.MouseEvent('click', { bubbles: true }));
   const metrics = [...doc.querySelectorAll('#modalBody .metric b')].map(e => e.textContent.trim());
   assert.equal(metrics.length, 4);
@@ -172,8 +173,11 @@ test('the draft board lists every pick from both leagues', async () => {
   const board = doc.getElementById('boardList');
   assert.equal(board.querySelectorAll('.board-pick').length, 300);
   assert.ok(board.querySelectorAll('.board-round').length >= 15);
+  assert.ok(doc.querySelectorAll('#boardGrid .dboard').length === 2, 'a grid per league');
+  assert.ok(doc.querySelectorAll('#boardGrid .dboard-cell.head').length >= 20, 'a column header per slot');
   assert.match(text(doc, 'boardMeta'), /matched to consensus rank/);
   assert.ok(board.querySelector('.board-pick.steal'), 'expect at least one value pick');
+  assert.ok(board.querySelector('.board-pick.pos-col-RB'), 'position colour should be applied');
   assert.ok(board.querySelector('.board-pick.reach'), 'expect at least one reach');
 });
 
@@ -201,7 +205,7 @@ test('a missing snapshot says exactly what to run', async () => {
   const { doc, errors } = await boot({ snapshot: 'missing' });
   assert.deepEqual(errors, []);
   assert.match(text(doc, 'draftStatus'), /fetch_fantasypros\.py/);
-  assert.equal(doc.querySelectorAll('#draftRankList .draft-rank-card').length, 0);
+  assert.equal(doc.querySelectorAll('#draftRankList .grade-row').length, 0);
   // The board must still work without FantasyPros.
   assert.equal(doc.querySelectorAll('#boardList .board-pick').length, 300);
 });
@@ -209,7 +213,7 @@ test('a missing snapshot says exactly what to run', async () => {
 test('an unfinished draft waits rather than publishing half a grade', async () => {
   const { doc } = await boot({ draftStatus: 'drafting' });
   assert.match(text(doc, 'draftStatus'), /armed/);
-  assert.equal(doc.querySelectorAll('#draftRankList .draft-rank-card').length, 0);
+  assert.equal(doc.querySelectorAll('#draftRankList .grade-row').length, 0);
 });
 
 test('the playoff view opens itself in week 15 and shows a cut line', async () => {

@@ -1,4 +1,4 @@
-# BDI Fantasy HQ — v0.6.0
+# BDI Fantasy HQ — v0.7.0
 
 A static GitHub Pages site that pulls BDI's two 10-team Sleeper redraft leagues
 into one place. No build step, no framework, no backend.
@@ -110,6 +110,19 @@ jsdom is a dev dependency only; the deployed site has none.
 Copy `index.html`, `styles.css`, `config.js`, `grade.js`, `app.js`,
 `bdi-logo.png` and `data/` to the root of the Pages repo. `scripts/`,
 `package.json` and `node_modules/` are not needed in production.
+
+## Design
+
+Broadcast scoreboard. Two colour systems that never overlap: BDI green means
+status only — live, advancing, in the hunt — and position colours (QB/RB/WR/TE/
+K/DST) carry the football information. Hairline rules instead of floating cards,
+3px corners, no gradients as decoration, no shadows outside the modal. Barlow
+Condensed for names and numbers, Barlow for body, tabular figures throughout so
+columns stop jittering.
+
+The home hero is a live ticker rather than a sentence. The draft board is a real
+board — a column per draft slot, a row per round — which collapses to the
+position-coloured list on mobile, where the width does not exist.
 
 ## Changes in v0.6.0
 
