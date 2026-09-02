@@ -453,6 +453,23 @@
       r.centered = r.adp === null ? null : (r.adp - r.overall) - (medianByPos[r.pos] || 0);
     }
 
+    /* "Best player" and "best bargain" are different questions, and collapsing
+     * them into one award produced nonsense: at 1.01 your best pick is the best
+     * player available, not a tenth-rounder who happened to fall. So the
+     * headline award blends how good the player is with how cheaply he came,
+     * weighted towards good, and the pure bargain keeps its own slot. */
+    const zOf = values => {
+      const n = Math.max(1, values.length);
+      const mean = values.reduce((a, b) => a + b, 0) / n;
+      const sd = Math.sqrt(values.reduce((s, x) => s + (x - mean) ** 2, 0) / n) || 1;
+      return x => (x - mean) / sd;
+    };
+    const zVor = zOf(allRows.map(r => r.vor || 0));
+    const zDelta = zOf(allRows.filter(r => r.centered !== null).map(r => r.centered));
+    for (const r of allRows) {
+      r.pickScore = 0.70 * zVor(r.vor || 0) + 0.30 * (r.centered === null ? 0 : zDelta(r.centered));
+    }
+
     for (const { code, slots, bench, byRoster } of leagueRosters) {
       for (const [rid, players] of byRoster) {
         players.sort((a, b) => a.overall - b.overall);
@@ -512,6 +529,9 @@
       // MVP is the biggest edge over replacement rather than the biggest total.
       const pool = narrativePool(e.players);
       const withDelta = pool.filter(p => p.centered !== null);
+      // The best thing you did: mostly the best player, helped by getting him cheap.
+      e.bestPick = [...pool].sort((a, b) => b.pickScore - a.pickScore)[0] || null;
+      // The bargain, judged against what the field paid for that position.
       e.best = [...withDelta].sort((a, b) => b.centered - a.centered)[0] || pool[0] || null;
       e.reach = [...withDelta].sort((a, b) => a.centered - b.centered)[0] || null;
       e.mvp = [...pool].sort((a, b) => b.vor - a.vor)[0] || null;

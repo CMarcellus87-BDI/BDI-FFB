@@ -1,6 +1,6 @@
 {
   "name": "bdi-fantasy-hq",
-  "version": "0.8.4",
+  "version": "0.8.6",
   "private": true,
   "scripts": {
     "test": "node --test scripts/selftest.mjs && node --test --test-force-exit --test-concurrency=6 scripts/smoketest.mjs",

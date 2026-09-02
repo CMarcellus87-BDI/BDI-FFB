@@ -823,6 +823,10 @@
       if (d !== null && d <= -10) return `${Math.abs(d)} spots ahead of consensus. It was treated as more of a suggestion.`;
       return 'The biggest reach on this roster was mild by draft-room standards.';
     }
+    if (type === 'bestPick') {
+      const cheap = d !== null && d >= 8 ? ` And ${d} spots cheaper than the field paid at ${p.pos}.` : '';
+      return `${fmt(p.vor || 0)} points above replacement at ${p.pos}, the best thing this roster did.${cheap}`;
+    }
     if (type === 'mvp') return `${fmt(p.proj || 0)} projected points, ${fmt(p.vor || 0)} of it above replacement at ${p.pos}.`;
     return '';
   }
@@ -902,6 +906,9 @@
     if (bye) reasons.push(`There are ${bye}, which is a loss you scheduled in advance.`);
     if (bestD !== null && bestD >= 15) reasons.push(`${g.best.name} falling ${bestD} spots past the going rate at ${g.best.pos} was the clearest win.`);
     if (reachD !== null && reachD <= -18) reasons.push(`${g.reach.name} went ${Math.abs(reachD)} picks early and will need explaining.`);
+    if (g.bestPick && g.best && g.bestPick.name !== g.best.name) {
+      reasons.push(`${g.bestPick.name} is the best player here; ${g.best.name} was the best bargain.`);
+    }
     reasons.push(`${g.strength} is the strongest room; ${g.weakness} is where the depth chart gets uncomfortable.`);
     if (g.rank === 1) reasons.push('Congratulations on winning the part of fantasy football that famously guarantees nothing.');
     if (g.rank === n && n > 1) reasons.push('Someone had to finish last. We appreciate your service.');
@@ -923,9 +930,11 @@
       ['Projected lineup', g.components.lineupStrength]
     ];
     const callouts = [
-      ['Best value', `<b>${esc(g.best ? g.best.name : '—')}</b>${bestD !== null ? ` <span class="delta good">${signed(bestD)} vs consensus</span>` : ''}<br>${esc(pickBlurb(g.best, 'best'))}`],
-      ['Biggest reach', `<b>${esc(g.reach ? g.reach.name : '—')}</b>${reachD !== null ? ` <span class="delta bad">${signed(reachD)} vs consensus</span>` : ''}<br>${esc(pickBlurb(g.reach, 'reach'))}`],
-      ['Draft MVP', `<b>${esc(g.mvp ? g.mvp.name : '—')}</b><br>${esc(pickBlurb(g.mvp, 'mvp'))}`],
+            ['Best pick', `<b>${esc(g.bestPick ? g.bestPick.name : '\u2014')}</b>` +
+        `${g.bestPick ? ` <span class="delta good">pick ${g.bestPick.overall}</span>` : ''}<br>` +
+        `${esc(pickBlurb(g.bestPick, 'bestPick'))}`],
+      ['Best value', `<b>${esc(g.best ? g.best.name : '\u2014')}</b>${bestD !== null ? ` <span class="delta good">${signed(bestD)} vs consensus</span>` : ''}<br>${esc(pickBlurb(g.best, 'best'))}`],
+      ['Biggest reach', `<b>${esc(g.reach ? g.reach.name : '\u2014')}</b>${reachD !== null ? ` <span class="delta bad">${signed(reachD)} vs consensus</span>` : ''}<br>${esc(pickBlurb(g.reach, 'reach'))}`],
       ['Roster shape', g.constructionNotes && g.constructionNotes.length
         ? esc(g.constructionNotes.join(', '))
         : 'Nothing structurally wrong with it.']

@@ -66,10 +66,12 @@ function simulateDraft(snapshot, league, teams, rounds, seed) {
     9: { QB: 2, TE: 2, RB: 4 }
   };
   const byeBlind = new Set([3, 8]);
+  // Ties broken by name, because the API returns a slightly different player
+  // count run to run and an unstable sort made two rehearsals incomparable.
   const pool = snapshot.players
     .map(p => ({ ...p, rank: p.adp_ppr ?? p.adp_half ?? p.adp_std }))
     .filter(p => p.rank != null)
-    .sort((a, b) => a.rank - b.rank);
+    .sort((a, b) => (a.rank - b.rank) || a.name.localeCompare(b.name));
 
   let s = seed;
   const rnd = () => (s = (s * 1103515245 + 12345) & 0x7fffffff) / 0x7fffffff;
@@ -85,13 +87,19 @@ function simulateDraft(snapshot, league, teams, rounds, seed) {
       const roster = rosters[t];
       const need = { ...baseNeed, ...(quirks[t + 1] || {}) };
       // Look a few deep and take one, so two managers never draft identically.
-      const eligible = pool.filter(p => {
-        if (taken.has(p.name)) return false;
-        const have = roster.counts[p.position] || 0;
-        if (have >= (need[p.position] ?? 0)) return false;
-        if ((p.position === 'K' || p.position === 'DST') && round < rounds - 2) return false;
-        return true;
-      }).slice(0, 6);
+      // Late rounds: take the mandatory kicker and defense first, or the
+      // roster cannot legally start a lineup and gets docked for my bug.
+      const mustHave = ['K', 'DST'].filter(pos =>
+        (roster.counts[pos] || 0) < 1 && rounds - round < 2);
+      const eligible = (mustHave.length
+        ? pool.filter(p => !taken.has(p.name) && p.position === mustHave[0])
+        : pool.filter(p => {
+          if (taken.has(p.name)) return false;
+          const have = roster.counts[p.position] || 0;
+          if (have >= (need[p.position] ?? 0)) return false;
+          if ((p.position === 'K' || p.position === 'DST') && round < rounds - 2) return false;
+          return true;
+        })).slice(0, 6);
       let choice;
       if (byeBlind.has(t + 1)) {
         // Actively prefers players sharing one bye, which is what stacking looks like.
@@ -162,7 +170,8 @@ function report(result, snapshot) {
   console.log('\n--- grades --------------------------------------------------');
   for (const g of grades) {
     console.log(`  ${String(g.rank).padStart(2)}. ${g.letter.padEnd(3)} ${g.team.name.slice(0, 26).padEnd(27)}` +
-      `${Object.values(g.components).join(' ')}   best: ${(g.best?.name || '—').slice(0, 18).padEnd(19)}` +
+      `${Object.values(g.components).join(' ')}   pick: ${(g.bestPick?.name || '—').slice(0, 17).padEnd(18)}` +
+      `value: ${(g.best?.name || '—').slice(0, 17).padEnd(18)}` +
       `${(g.constructionNotes || []).join('; ').slice(0, 46)}`);
   }
 
@@ -207,6 +216,10 @@ async function main() {
     }
 
     const override = arg(`draft-${code.toLowerCase()}`);
+    if (!override && argv.includes('--no-sim')) {
+      console.log(`League ${code}: skipped`);
+      continue;
+    }
     let picks;
     if (override) {
       picks = await sleeper(`/draft/${override}/picks`);

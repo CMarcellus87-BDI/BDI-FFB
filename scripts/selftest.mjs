@@ -325,3 +325,38 @@ test('a roster of nothing but kickers still names a best pick', () => {
   assert.ok(grades[0].best, 'should fall back rather than return null');
   assert.ok(grades[0].mvp);
 });
+
+test('at 1.01 the best pick is the best player, not a late flier', () => {
+  // The complaint that prompted this: paying full price for an elite back is
+  // obviously the best thing you did, even though it is not a bargain.
+  const fp = [{ name: 'Jahmyr Gibbs', position: 'RB', adp_ppr: 1, points_ppr: 340 }];
+  for (let i = 2; i <= 150; i++) {
+    fp.push({ name: `P${i}`, position: ['RB','WR','TE','QB','K','DST'][i % 6],
+      adp_ppr: i, points_ppr: 300 - i * 1.4 });
+  }
+  const picks = [];
+  let no = 1;
+  const take = (name, position, roster) => {
+    const parts = name.split(' ');
+    picks.push({ pick_no: no, round: Math.ceil(no / 10), roster_id: roster,
+      metadata: { first_name: parts[0], last_name: parts.slice(1).join(' '), position } });
+    no++;
+  };
+  take('Jahmyr Gibbs', 'RB', 1);
+  for (let i = 2; i <= 10; i++) take(fp[i].name, fp[i].position, i);
+  for (let round = 2; round <= 12; round++) {
+    for (let team = 1; team <= 10; team++) {
+      const idx = 2 + ((no * 3) % (fp.length - 2));
+      take(fp[idx].name, fp[idx].position, team);
+    }
+  }
+  const { grades } = G.buildGrades([{ code: 'A', league: LEAGUE, picks }], fp,
+    (code, rid) => ({ key: `${code}:${rid}`, code, name: `Team ${rid}` }), WEIGHTS);
+  const first = grades.find(g => g.team.name === 'Team 1');
+  assert.equal(first.bestPick.name, 'Jahmyr Gibbs',
+    `the 1.01 should be the best pick, got ${first.bestPick.name}`);
+  assert.equal(first.bestPick.overall, 1);
+  // The bargain award is a separate thing and should not be the 1.01.
+  assert.notEqual(first.best.overall, 1, 'a full-price pick is not a bargain');
+  assert.ok(grades.every(g => g.bestPick), 'every team needs a best pick');
+});

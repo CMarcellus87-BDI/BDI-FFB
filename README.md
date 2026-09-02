@@ -127,8 +127,18 @@ pick metadata — and defenses and kickers are where name matching breaks. Run a
 Sleeper mock draft, take the draft id out of the URL, then:
 
 ```powershell
-node scripts/dry-run.mjs --draft-a <MOCK_DRAFT_ID>
+node scripts/dry-run.mjs --draft-a <MOCK_DRAFT_ID> --no-sim
 ```
+
+`--no-sim` grades only the league you gave real picks for. Use it when
+comparing the same draft against two different snapshots: without it the other
+league is re-simulated each run, and since all twenty teams are normalised
+together that alone moves the grades.
+
+Note that grades are relative to the field. When one league publishes alone it
+is ranked 1 to 10 among its own ten teams; when the second finishes, all twenty
+are normalised together and the first league's numbers shift. That is intended,
+but it does mean a team's letter can move without anybody drafting again.
 
 To see it in the actual interface rather than a terminal, open the site with the
 same id: `https://your-domain/?draftA=<MOCK_DRAFT_ID>`. The Grades tab renders
@@ -220,6 +230,13 @@ converted to value over replacement, where replacement level is the last
 startable player at that position given the league's own starting slots and team
 count. A kicker projecting 145 clears replacement by about 10. A receiver
 projecting 145 clears it by 55.
+
+Best pick and best value are deliberately different awards. **Best pick** is
+70% value over replacement and 30% how cheaply the player came, so at 1.01 it is
+the elite back you paid full price for — obviously the best thing you did, even
+though it is not a bargain. **Best value** is the pure bargain, measured against
+what the field paid at that position. They are frequently different players, and
+the verdict says so when they are.
 
 Then a blunter rule on top, because the arithmetic fix was not enough: kickers
 and defenses are excluded from every narrative award outright. Best value,
