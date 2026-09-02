@@ -508,3 +508,14 @@ body.modal-open { overflow: hidden; }
 @media (prefers-reduced-motion: reduce) {
   * { animation-duration: .01ms !important; transition-duration: .01ms !important; }
 }
+
+/* Room by room spans the full row rather than leaving a dead half-cell. */
+.wide-callout { grid-column: 1 / -1; }
+.wide-callout p { display: flex; flex-wrap: wrap; gap: 6px; }
+.room {
+  font-family: var(--display); font-weight: 700; font-size: .86rem;
+  padding: 3px 9px; border-radius: 2px; border: 1px solid var(--rule);
+  color: var(--chalk2); font-variant-numeric: tabular-nums;
+}
+.room.strong { color: var(--bdi); border-color: rgba(121, 223, 67, .45); }
+.room.weak { color: var(--tier-d); border-color: rgba(255, 107, 114, .4); }

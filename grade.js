@@ -523,7 +523,14 @@
       entries.forEach((e, i) => { posStrength[i][pos] = percentile(vals[i], vals); });
     }
     entries.forEach((e, i) => {
-      const ranked = Object.entries(posStrength[i]).sort((a, b) => b[1] - a[1]);
+      // Percentiles tie constantly with ten teams, which made the strongest and
+      // weakest room effectively random. Total value at the position breaks it.
+      const totals = {};
+      for (const pos of ['QB', 'RB', 'WR', 'TE']) {
+        totals[pos] = e.players.filter(p => p.pos === pos).reduce((s, p) => s + Math.max(0, p.vor), 0);
+      }
+      const ranked = Object.entries(posStrength[i])
+        .sort((a, b) => (b[1] - a[1]) || (totals[b[0]] - totals[a[0]]));
       e.positions = posStrength[i];
       e.constructionNotes = e.raw.constructNotes;
       e.constructionScore = e.raw.construct;

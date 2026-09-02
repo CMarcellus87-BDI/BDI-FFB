@@ -894,7 +894,7 @@
     if ((c.TE || 0) >= 3) reasons.push(`${c.TE} tight ends suggests either a strategy or an unresolved personal issue.`);
     const bye = (g.constructionNotes || []).find(n => n.includes('on bye'));
     if (bye) reasons.push(`There are ${bye}, which is a loss you scheduled in advance.`);
-    if (bestD !== null && bestD >= 15) reasons.push(`${g.best.name} falling ${bestD} spots past ADP was the clearest win.`);
+    if (bestD !== null && bestD >= 15) reasons.push(`${g.best.name} falling ${bestD} spots past the going rate at ${g.best.pos} was the clearest win.`);
     if (reachD !== null && reachD <= -18) reasons.push(`${g.reach.name} went ${Math.abs(reachD)} picks early and will need explaining.`);
     reasons.push(`${g.strength} is the strongest room; ${g.weakness} is where the depth chart gets uncomfortable.`);
     if (g.rank === 1) reasons.push('Congratulations on winning the part of fantasy football that famously guarantees nothing.');
@@ -922,9 +922,7 @@
       ['Draft MVP', `<b>${esc(g.mvp ? g.mvp.name : '—')}</b><br>${esc(pickBlurb(g.mvp, 'mvp'))}`],
       ['Roster shape', g.constructionNotes && g.constructionNotes.length
         ? esc(g.constructionNotes.join(', '))
-        : 'Nothing structurally wrong with it.'],
-      ['Room by room', ['QB', 'RB', 'WR', 'TE'].map(p =>
-        `${p} ${Math.round(g.positions[p] || 0)}<sup>th</sup> pct`).join(' \u00b7 ')]
+        : 'Nothing structurally wrong with it.']
     ];
 
     openModal(`${g.team.name} · ${g.letter} · ${g.rank} of ${state.grades.length}${crown}`, `
@@ -932,6 +930,10 @@
         `<div class="metric"><b class="tier-${val[0] === 'A' ? 'a' : val[0] === 'B' ? 'b' : val[0] === 'C' ? 'c' : 'd'}">${val}</b><span>${esc(label)}</span></div>`).join('')}</div>
       <div class="callout-grid">${callouts.map(([h, body]) =>
         `<div class="callout"><h5>${esc(h)}</h5><p>${body}</p></div>`).join('')}
+        <div class="callout wide-callout"><h5>Room by room</h5><p>${['QB', 'RB', 'WR', 'TE'].map(p => {
+          const v = Math.round(g.positions[p] || 0);
+          return `<span class="room ${v >= 70 ? 'strong' : v <= 30 ? 'weak' : ''}">${p} ${v}<sup>th</sup></span>`;
+        }).join('')}</p></div>
         <div class="callout verdict-callout"><h5>The verdict</h5><p>${esc(verdict(g))}</p></div>
       </div>
       ${talks.length ? `<div class="notable-block"><h5>Picks worth talking about</h5><div class="notable-list">${talks.map(x => `
@@ -940,9 +942,9 @@
           <span>Pick ${x.p.overall}${x.p.adp !== null ? ` · consensus ${Math.round(x.p.adp)}` : ''}</span>
           <p>${esc(x.blurb)}</p>
         </div>`).join('')}</div></div>` : ''}
-      <p class="grade-disclaimer">Grades compare all drafted rosters against frozen FantasyPros consensus rankings,
-      consensus rank and projections, and scientifically determine who won fantasy football before any football has been played.
-      Results are therefore unquestionably final.</p>`);
+      <p class="grade-disclaimer">Grades compare every drafted roster against a frozen FantasyPros snapshot \u2014 consensus rank,
+      projections and value over replacement \u2014 and scientifically determine who won fantasy football
+      before any football has been played. Results are therefore unquestionably final.</p>`);
   }
 
   /* -------------------------------------------------------------- playoffs */
