@@ -793,6 +793,12 @@
 
   /* ------------------------------------------------------ draft write-ups */
 
+  const ordinal = n => {
+    const s = ['th', 'st', 'nd', 'rd'];
+    const v = n % 100;
+    return n + (s[(v - 20) % 10] || s[v] || s[0]);
+  };
+
   const stableHash = text => {
     let h = 2166136261;
     for (const ch of String(text)) { h ^= ch.charCodeAt(0); h = Math.imul(h, 16777619); }
@@ -930,10 +936,16 @@
         `<div class="metric"><b class="tier-${val[0] === 'A' ? 'a' : val[0] === 'B' ? 'b' : val[0] === 'C' ? 'c' : 'd'}">${val}</b><span>${esc(label)}</span></div>`).join('')}</div>
       <div class="callout-grid">${callouts.map(([h, body]) =>
         `<div class="callout"><h5>${esc(h)}</h5><p>${body}</p></div>`).join('')}
-        <div class="callout wide-callout"><h5>Room by room</h5><p>${['QB', 'RB', 'WR', 'TE'].map(p => {
-          const v = Math.round(g.positions[p] || 0);
-          return `<span class="room ${v >= 70 ? 'strong' : v <= 30 ? 'weak' : ''}">${p} ${v}<sup>th</sup></span>`;
-        }).join('')}</p></div>
+        <div class="callout wide-callout">
+          <h5>Room by room</h5>
+          <p>${['QB', 'RB', 'WR', 'TE'].map(p => {
+            const rank = g.positionRanks[p] || g.fieldSize;
+            const third = g.fieldSize / 3;
+            const tone = rank <= third ? 'strong' : rank > g.fieldSize - third ? 'weak' : '';
+            return `<span class="room ${tone}"><b>${p}</b>${ordinal(rank)} of ${g.fieldSize}</span>`;
+          }).join('')}</p>
+          <small class="room-note">Ranked against the rest of the field on value over replacement.</small>
+        </div>
         <div class="callout verdict-callout"><h5>The verdict</h5><p>${esc(verdict(g))}</p></div>
       </div>
       ${talks.length ? `<div class="notable-block"><h5>Picks worth talking about</h5><div class="notable-list">${talks.map(x => `

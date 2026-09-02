@@ -519,3 +519,7 @@ body.modal-open { overflow: hidden; }
 }
 .room.strong { color: var(--bdi); border-color: rgba(121, 223, 67, .45); }
 .room.weak { color: var(--tier-d); border-color: rgba(255, 107, 114, .4); }
+
+.room { display: inline-flex; align-items: baseline; gap: 6px; }
+.room b { font-weight: 800; letter-spacing: .03em; }
+.room-note { display: block; margin-top: 8px; color: var(--chalk3); font-size: .76rem; }

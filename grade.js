@@ -517,10 +517,21 @@
       e.mvp = [...pool].sort((a, b) => b.vor - a.vor)[0] || null;
     });
 
+    /* A percentile reads as a rank and is not one: "QB 15th" in a ten-team
+     * league is nonsense on its face. Rank teams outright at each position by
+     * total value over replacement, ties sharing a place. */
     const posStrength = entries.map(() => ({}));
+    const posRank = entries.map(() => ({}));
+    const posTotal = entries.map(() => ({}));
     for (const pos of ['QB', 'RB', 'WR', 'TE']) {
-      const vals = entries.map(e => e.players.filter(p => p.pos === pos).reduce((s, p) => s + Math.max(0, p.vor), 0));
-      entries.forEach((e, i) => { posStrength[i][pos] = percentile(vals[i], vals); });
+      const vals = entries.map(e =>
+        e.players.filter(p => p.pos === pos).reduce((s, p) => s + Math.max(0, p.vor), 0));
+      const sorted = [...vals].sort((a, b) => b - a);
+      entries.forEach((e, i) => {
+        posStrength[i][pos] = percentile(vals[i], vals);
+        posTotal[i][pos] = vals[i];
+        posRank[i][pos] = sorted.indexOf(vals[i]) + 1;
+      });
     }
     entries.forEach((e, i) => {
       // Percentiles tie constantly with ten teams, which made the strongest and
@@ -529,9 +540,12 @@
       for (const pos of ['QB', 'RB', 'WR', 'TE']) {
         totals[pos] = e.players.filter(p => p.pos === pos).reduce((s, p) => s + Math.max(0, p.vor), 0);
       }
-      const ranked = Object.entries(posStrength[i])
-        .sort((a, b) => (b[1] - a[1]) || (totals[b[0]] - totals[a[0]]));
+      const ranked = Object.entries(posRank[i])
+        .sort((a, b) => (a[1] - b[1]) || (totals[b[0]] - totals[a[0]]));
       e.positions = posStrength[i];
+      e.positionRanks = posRank[i];
+      e.positionTotals = posTotal[i];
+      e.fieldSize = entries.length;
       e.constructionNotes = e.raw.constructNotes;
       e.constructionScore = e.raw.construct;
       e.strength = ranked[0] ? ranked[0][0] : 'Roster';
