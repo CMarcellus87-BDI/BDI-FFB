@@ -144,7 +144,8 @@
    * optimal for nested slot families; the swap pass afterwards covers the
    * configurations that are not nested.
    */
-  function optimalLineup(players, slots) {
+  /** The chosen starters themselves, not just their total. */
+  function optimalLineupPicks(players, slots) {
     const order = slotOrder(slots);
     const used = new Set();
     const chosen = [];
@@ -170,8 +171,60 @@
         });
       }
     }
-    return chosen.reduce((sum, c) => sum + (players[c.idx].proj || 0), 0);
+    return chosen.map(c => players[c.idx]);
   }
+
+  function optimalLineup(players, slots) {
+    return optimalLineupPicks(players, slots).reduce((sum, p) => sum + (p.proj || 0), 0);
+  }
+
+  /* ------------------------------------------------ value over replacement */
+
+  /* How a flex slot is shared out when working out replacement level. A FLEX
+   * is mostly a running back or receiver in practice, so it lifts the number
+   * of startable players at those positions more than at tight end. */
+  const FLEX_SHARE = {
+    FLEX: { RB: 0.40, WR: 0.45, TE: 0.15 },
+    WRRB_FLEX: { RB: 0.5, WR: 0.5 },
+    REC_FLEX: { WR: 0.7, TE: 0.3 },
+    SUPER_FLEX: { QB: 0.7, RB: 0.1, WR: 0.15, TE: 0.05 }
+  };
+
+  /**
+   * The projection of the last startable player at each position, which is what
+   * a pick there is really worth beating.
+   *
+   * Without this, points are compared across positions as if they were the same
+   * currency. They are not: a kicker projecting 140 is barely better than the
+   * kicker anyone could have had, while a receiver projecting 140 is a starter.
+   */
+  function replacementLevels(fpPlayers, code, slots, teams) {
+    const startable = {};
+    for (const [slot, n] of Object.entries(slots)) {
+      const share = FLEX_SHARE[slot];
+      if (share) {
+        for (const [pos, frac] of Object.entries(share)) startable[pos] = (startable[pos] || 0) + n * frac;
+      } else {
+        startable[slot] = (startable[slot] || 0) + n;
+      }
+    }
+    const byPos = {};
+    for (const p of fpPlayers || []) {
+      const pos = normPos(p.position);
+      const proj = projPoints(p, code);
+      if (proj > 0) (byPos[pos] ||= []).push(proj);
+    }
+    const levels = {};
+    for (const [pos, list] of Object.entries(byPos)) {
+      list.sort((a, b) => b - a);
+      // One past the last starter: the best player nobody had to spend on.
+      const idx = clamp(Math.round((startable[pos] || 0) * teams), 1, list.length) - 1;
+      levels[pos] = list[idx] ?? list[list.length - 1] ?? 0;
+    }
+    return levels;
+  }
+
+  const vorOf = (proj, pos, levels) => (proj > 0 ? proj - ((levels || {})[normPos(pos)] ?? 0) : 0);
 
   /* --------------------------------------------------- baseline at a slot */
 
@@ -183,12 +236,12 @@
    * This is what makes the value component slot-neutral. Scoring raw points
    * per pick rewards whoever drew the 1.01, which is not a draft decision.
    */
-  function buildBaseline(fpPlayers, code, maxPick) {
+  function buildBaseline(fpPlayers, code, maxPick, levels) {
     const pool = (fpPlayers || [])
-      .map(p => ({ adp: adpOf(p, code), proj: projPoints(p, code) }))
-      .filter(p => p.adp !== null && p.proj > 0)
+      .map(p => ({ adp: adpOf(p, code), vor: vorOf(projPoints(p, code), p.position, levels) }))
+      .filter(p => p.adp !== null && Number.isFinite(p.vor))
       .sort((a, b) => a.adp - b.adp)
-      .map(p => p.proj);
+      .map(p => p.vor);
     if (!pool.length) return null;
     const smoothed = pool.map((_, i) => {
       const lo = Math.max(0, i - 4), hi = Math.min(pool.length, i + 5);
@@ -204,40 +257,79 @@
 
   /* ---------------------------------------------------------- construction */
 
+  /**
+   * What a roster is actually shaped like, rather than whether it is legal.
+   *
+   * The first version started at 100 and only docked small amounts, so every
+   * roster that could field a lineup scored 100 and the whole component graded
+   * A+ for all twenty teams — a quarter of the grade doing no work. This one
+   * punishes the things that genuinely cost you weeks: a third quarterback or
+   * tight end you cannot start, a second kicker, no flex depth, and starters
+   * stacked on the same bye.
+   */
   function constructionScore(players, slots, bench) {
     const counts = {};
     for (const p of players) counts[p.pos] = (counts[p.pos] || 0) + 1;
     let score = 100;
+    const notes = [];
 
     // Can this roster legally field a lineup at all?
-    const starters = slotOrder(slots);
     const pool = players.map(p => p.pos);
-    for (const { eligible, n } of starters) {
+    for (const { eligible, n } of slotOrder(slots)) {
       let filled = 0;
       for (let i = 0; i < n; i++) {
         const at = pool.findIndex(p => eligible.includes(p));
         if (at === -1) break;
         pool.splice(at, 1); filled++;
       }
-      score -= 18 * (n - filled);
+      if (filled < n) {
+        score -= 20 * (n - filled);
+        notes.push(`cannot fill ${n - filled} starting slot${n - filled > 1 ? 's' : ''}`);
+      }
     }
 
-    // Hoarding at a one-slot position costs real bench space.
-    const cap = (pos, allowed) => {
+    // A third quarterback or tight end is a bench spot that can never start.
+    const hoard = (pos, allowed, per, label) => {
       const over = (counts[pos] || 0) - allowed;
-      if (over > 0) score -= 5 * over;
+      if (over > 0) {
+        score -= per * over;
+        notes.push(`${counts[pos]} ${label}`);
+      }
     };
-    if (!slots.SUPER_FLEX) cap('QB', (slots.QB || 0) + 1);
-    cap('TE', (slots.TE || 0) + 1);
-    cap('K', slots.K || 0);
-    cap('DST', slots.DST || 0);
+    if (!slots.SUPER_FLEX) hoard('QB', (slots.QB || 0) + 1, 9, 'quarterbacks');
+    hoard('TE', (slots.TE || 0) + 1, 9, 'tight ends');
+    hoard('K', slots.K || 0, 11, 'kickers');
+    hoard('DST', slots.DST || 0, 8, 'defenses');
 
-    // Bench that is not flex-eligible depth is bench that cannot help you.
+    // Flex depth is what covers injuries. Bench bodies at capped positions are not depth.
     const flexy = (counts.RB || 0) + (counts.WR || 0) + (counts.TE || 0);
-    const expected = Object.values(slots).reduce((a, b) => a + b, 0) + bench;
-    if (expected > 0 && flexy < Math.ceil(expected * 0.55)) score -= 8;
+    const startingFlex = slotOrder(slots)
+      .filter(s => s.eligible.some(p => ['RB', 'WR', 'TE'].includes(p)))
+      .reduce((n, s) => n + s.n, 0);
+    const wantDepth = startingFlex + Math.ceil(bench * 0.6);
+    if (flexy < wantDepth) {
+      const short = wantDepth - flexy;
+      score -= Math.min(18, 4 * short);
+      notes.push(`${short} short on flex depth`);
+    }
 
-    return clamp(score, 40, 100);
+    // Starters stacked on one bye week means a guaranteed bad week.
+    const starters = optimalLineupPicks(players, slots);
+    const haveByes = starters.filter(p => p.bye != null).length;
+    if (haveByes >= Math.ceil(starters.length * 0.6)) {
+      const byWeek = {};
+      for (const p of starters) if (p.bye != null) byWeek[p.bye] = (byWeek[p.bye] || 0) + 1;
+      let worst = 0;
+      for (const [week, n] of Object.entries(byWeek)) {
+        const over = n - 2;
+        if (over > 0) {
+          score -= 5 * over;
+          if (n > worst) { worst = n; notes.push(`${n} starters on bye in week ${week}`); }
+        }
+      }
+    }
+
+    return { score: clamp(score, 20, 100), notes };
   }
 
   /* ------------------------------------------------------------- statistics */
@@ -273,6 +365,15 @@
 
   const GRADE_TIER = g => (g[0] === 'A' ? 'a' : g[0] === 'B' ? 'b' : g[0] === 'C' ? 'c' : 'd');
 
+  /* Nobody's draft was made or lost by a kicker. They are excluded from every
+   * narrative award, not merely de-weighted: a kicker leading a "best pick"
+   * list is simply not true, however the arithmetic got there. */
+  const NARRATIVE_POSITIONS = new Set(['QB', 'RB', 'WR', 'TE']);
+  const narrativePool = players => {
+    const skill = players.filter(p => NARRATIVE_POSITIONS.has(p.pos));
+    return skill.length ? skill : players;
+  };
+
   /* ---------------------------------------------------------------- grades */
 
   /**
@@ -284,6 +385,7 @@
   function buildGrades(leagues, fpPlayers, teamFor, weights) {
     const index = buildIndex(fpPlayers);
     const entries = [];
+    const leagueRosters = [];
     const diag = { picks: 0, matched: 0, projected: 0, withAdp: 0, unmatched: [] };
 
     for (const { code, league, picks } of leagues) {
@@ -291,11 +393,23 @@
       const slots = startingSlots(league);
       const bench = benchCount(league);
       const maxPick = Math.max(1, ...picks.map(p => num(p.pick_no) || 0));
-      const baseline = buildBaseline(fpPlayers, codeScoring, maxPick);
+      const teamCount = new Set(picks.map(p =>
+        (p.roster_id ?? (p.draft_slot !== undefined ? `slot${p.draft_slot}` : null)))).size || 10;
+      const levels = replacementLevels(fpPlayers, codeScoring, slots, teamCount);
+      const baseline = buildBaseline(fpPlayers, codeScoring, maxPick, levels);
 
+      // Mock drafts are not attached to a league, so their picks carry
+      // roster_id: null and only a draft_slot. Grouping on slot lets a mock be
+      // graded, which is the whole point of being able to rehearse.
+      const teamKeyOf = p => {
+        if (p.roster_id !== null && p.roster_id !== undefined) return p.roster_id;
+        if (p.draft_slot !== null && p.draft_slot !== undefined) return `slot${p.draft_slot}`;
+        return null;
+      };
       const byRoster = new Map();
       for (const p of picks) {
-        if (p.roster_id === null || p.roster_id === undefined) continue;
+        const rosterKey = teamKeyOf(p);
+        if (rosterKey === null) continue;
         const fp = matchPlayer(p, index);
         const proj = projPoints(fp, codeScoring);
         const adp = adpOf(fp, codeScoring);
@@ -311,28 +425,54 @@
           overall: num(p.pick_no) || 0,
           round: num(p.round) || 0,
           proj, adp, ecr: ecrOf(fp, codeScoring),
-          slotValue: baseline && proj > 0 ? proj - baseline(num(p.pick_no) || 1) : null
+          bye: fp && fp.bye != null ? num(fp.bye) : null,
+          vor: vorOf(proj, normPos((p.metadata && p.metadata.position) || (fp && fp.position)), levels)
         };
-        const arr = byRoster.get(p.roster_id) || [];
+        row.slotValue = baseline && proj > 0 ? row.vor - baseline(num(p.pick_no) || 1) : null;
+        const arr = byRoster.get(rosterKey) || [];
         arr.push(row);
-        byRoster.set(p.roster_id, arr);
+        byRoster.set(rosterKey, arr);
       }
 
+      leagueRosters.push({ code, slots, bench, byRoster });
+    }
+
+    /* Kickers and defenses rank around 200 overall but are always taken around
+     * pick 140, so their raw gap against consensus is a constant +60 or so for
+     * everybody. Centring each pick on the median gap for its own position
+     * removes that, and a kicker only reads as a steal if it beat the other
+     * kickers. */
+    const allRows = leagueRosters.flatMap(l => [...l.byRoster.values()].flat());
+    const medianByPos = {};
+    for (const pos of new Set(allRows.map(r => r.pos))) {
+      const deltas = allRows.filter(r => r.pos === pos && r.adp !== null)
+        .map(r => r.adp - r.overall).sort((a, b) => a - b);
+      medianByPos[pos] = deltas.length ? deltas[Math.floor(deltas.length / 2)] : 0;
+    }
+    for (const r of allRows) {
+      r.centered = r.adp === null ? null : (r.adp - r.overall) - (medianByPos[r.pos] || 0);
+    }
+
+    for (const { code, slots, bench, byRoster } of leagueRosters) {
       for (const [rid, players] of byRoster) {
         players.sort((a, b) => a.overall - b.overall);
-        const team = teamFor(code, rid) || { key: `${code}:${rid}`, code, name: `Roster ${rid}` };
+        const team = teamFor(code, rid) || {
+          key: `${code}:${rid}`, code,
+          name: String(rid).startsWith('slot') ? `Slot ${String(rid).slice(4)}` : `Roster ${rid}`
+        };
         // Slot-relative value, so the 1.01 carries no built-in advantage.
         const slotValue = players.reduce((s, p) => s + (p.slotValue || 0), 0);
         // Per-pick ADP delta, clamped at three rounds so one flier cannot
         // swamp nine sensible picks in either direction.
-        const deltas = players.filter(p => p.adp !== null).map(p => clamp(p.adp - p.overall, -36, 36));
+        const deltas = players.filter(p => p.centered !== null).map(p => clamp(p.centered, -36, 36));
         const adpAvg = deltas.length ? deltas.reduce((a, b) => a + b, 0) / deltas.length : 0;
         entries.push({
           team, players, code,
           raw: {
             slotValue, adpAvg,
             lineup: optimalLineup(players, slots),
-            construct: constructionScore(players, slots, bench)
+            ...(() => { const c = constructionScore(players, slots, bench);
+              return { construct: c.score, constructNotes: c.notes }; })()
           }
         });
       }
@@ -344,7 +484,10 @@
       const vals = entries.map(e => e.raw[field]);
       entries.forEach((e, i) => { pct[i][field] = percentile(e.raw[field], vals) / 100; });
     }
-    entries.forEach((e, i) => { pct[i].construct = clamp((e.raw.construct - 40) / 60, 0, 1); });
+    // Percentile, not a fixed band. If every roster is shaped the same the
+    // component honestly grades everyone in the middle instead of everyone an A+.
+    const constructVals = entries.map(e => e.raw.construct);
+    entries.forEach((e, i) => { pct[i].construct = percentile(e.raw.construct, constructVals) / 100; });
 
     const W = weights;
     entries.forEach((e, i) => {
@@ -365,20 +508,25 @@
         rosterConstruction: componentGrade(pct[i].construct),
         lineupStrength: componentGrade(pct[i].lineup)
       };
-      const withAdp = e.players.filter(p => p.adp !== null);
-      e.best = [...withAdp].sort((a, b) => (b.adp - b.overall) - (a.adp - a.overall))[0] || e.players[0] || null;
-      e.reach = [...withAdp].sort((a, b) => (a.adp - a.overall) - (b.adp - b.overall))[0] || null;
-      e.mvp = [...e.players].sort((a, b) => b.proj - a.proj)[0] || null;
+      // Position-fair: best beats other players at the same position, and the
+      // MVP is the biggest edge over replacement rather than the biggest total.
+      const pool = narrativePool(e.players);
+      const withDelta = pool.filter(p => p.centered !== null);
+      e.best = [...withDelta].sort((a, b) => b.centered - a.centered)[0] || pool[0] || null;
+      e.reach = [...withDelta].sort((a, b) => a.centered - b.centered)[0] || null;
+      e.mvp = [...pool].sort((a, b) => b.vor - a.vor)[0] || null;
     });
 
     const posStrength = entries.map(() => ({}));
     for (const pos of ['QB', 'RB', 'WR', 'TE']) {
-      const vals = entries.map(e => e.players.filter(p => p.pos === pos).reduce((s, p) => s + p.proj, 0));
+      const vals = entries.map(e => e.players.filter(p => p.pos === pos).reduce((s, p) => s + Math.max(0, p.vor), 0));
       entries.forEach((e, i) => { posStrength[i][pos] = percentile(vals[i], vals); });
     }
     entries.forEach((e, i) => {
       const ranked = Object.entries(posStrength[i]).sort((a, b) => b[1] - a[1]);
       e.positions = posStrength[i];
+      e.constructionNotes = e.raw.constructNotes;
+      e.constructionScore = e.raw.construct;
       e.strength = ranked[0] ? ranked[0][0] : 'Roster';
       e.weakness = ranked[ranked.length - 1] ? ranked[ranked.length - 1][0] : 'Depth';
     });
@@ -429,8 +577,8 @@
   return {
     clamp, num, normName, normPos, fpKey, pickName,
     buildIndex, matchPlayer, scoringCode, projPoints, adpOf, ecrOf,
-    startingSlots, benchCount, slotOrder, optimalLineup, buildBaseline,
-    constructionScore, percentile, zScores, letter, componentGrade,
-    buildGrades, standingsFromMatchups
+    startingSlots, benchCount, slotOrder, optimalLineup, optimalLineupPicks, buildBaseline,
+    constructionScore, replacementLevels, vorOf, percentile, zScores, letter, componentGrade,
+    buildGrades, standingsFromMatchups, NARRATIVE_POSITIONS
   };
 });

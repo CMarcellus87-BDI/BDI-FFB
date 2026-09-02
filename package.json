@@ -1,11 +1,12 @@
 {
   "name": "bdi-fantasy-hq",
-  "version": "0.6.0",
+  "version": "0.8.2",
   "private": true,
   "scripts": {
     "test": "node --test scripts/selftest.mjs && node --test --test-force-exit --test-concurrency=6 scripts/smoketest.mjs",
     "snapshot": "node scripts/fetch-snapshot.mjs",
-    "probe": "node scripts/fetch-snapshot.mjs --probe"
+    "probe": "node scripts/fetch-snapshot.mjs --probe",
+    "dry-run": "node scripts/dry-run.mjs --simulate"
   },
   "devDependencies": {
     "jsdom": "^26.0.0"

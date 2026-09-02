@@ -29,7 +29,11 @@ node scripts/fetch-snapshot.mjs --probe
 
 That tries each `type` value for consensus-rankings and prints which one returns
 redraft data, which field carries consensus rank, and which fields carry projected points.
-It writes nothing. If a field name it reports is not in the candidate lists at
+It writes nothing.
+
+The build output reports points coverage per position and dumps the raw API row
+for any position that came back with no points at all. A whole position arriving
+without projections is the failure that matters, and the totals hide it. If a field name it reports is not in the candidate lists at
 the top of the script, add it there.
 
 Then build the snapshot:
@@ -59,14 +63,23 @@ is the grade you argue about in December.
 Each drafted roster is scored on four things, then ranked against the whole
 field. All twenty teams are normalised together once both drafts finish.
 
-- **Value at the slot, 35%.** Projected points against a smoothed baseline of
-  what a consensus drafter would have got at that exact pick. This is
-  deliberately slot-neutral — scoring raw points per pick just rewards whoever
-  drew the 1.01, which is not a draft decision.
-- **Rank discipline, 25%.** Mean gap between each pick and consensus rank, with
-  each pick clamped at three rounds so one flier cannot swamp nine sound picks.
-- **Roster construction, 25%.** Read from each league's own `roster_positions`:
-  can you legally field a lineup, and did you hoard at a one-slot position.
+- **Value at the slot, 35%.** Value over replacement against a smoothed
+  baseline of what a consensus drafter would have got at that exact pick.
+  Slot-neutral, because scoring raw points per pick just rewards whoever drew
+  the 1.01. Position-fair, because points are not a common currency: replacement
+  level at kicker is around 130 and at receiver around 90, so a kicker and a
+  receiver projecting the same total are worth very different amounts.
+- **Rank discipline, 25%.** Mean gap between each pick and consensus rank,
+  centred on the median gap for that pick's own position, and clamped at three
+  rounds so one flier cannot swamp nine sound picks. The centring matters:
+  FantasyPros ranks kickers and defenses around 200 overall but everyone takes
+  one around pick 140, so uncentred they all read as identical +60 bargains.
+- **Roster construction, 25%.** Read from each league's own `roster_positions`.
+  Penalises what actually costs weeks: a third quarterback or tight end that can
+  never start, a second kicker, thin flex depth, and starters stacked on the same
+  bye week. Percentiled like every other component, so if all twenty rosters
+  really are shaped the same it grades everyone in the middle rather than handing
+  out twenty A pluses. The reasons appear on the report as "Roster shape".
 - **Projected lineup, 15%.** Best legal starting lineup on frozen projections.
 
 Each league publishes its own 1–10 the moment its draft ends. The combined 1–20
@@ -91,6 +104,35 @@ every 90 seconds while that tab is open.
 Sleeper team and display names are used once managers join. To force a real
 name, add the Sleeper user ID to `managerNameOverrides` in `config.js`. Find IDs
 at `https://api.sleeper.app/v1/league/<LEAGUE_ID>/users`.
+
+## Rehearsing draft night
+
+Both drafts run at the same time, so there is no margin to discover a problem
+live. Rehearse instead:
+
+```powershell
+npm run dry-run
+```
+
+That invents a plausible draft from the frozen snapshot, runs the real grader,
+and prints the match rate, per-position coverage, all twenty grades and a set of
+sanity checks. It writes nothing.
+
+The build output reports points coverage per position and dumps the raw API row
+for any position that came back with no points at all. A whole position arriving
+without projections is the failure that matters, and the totals hide it.
+
+The stronger version uses real Sleeper picks, because only real picks carry real
+pick metadata — and defenses and kickers are where name matching breaks. Run a
+Sleeper mock draft, take the draft id out of the URL, then:
+
+```powershell
+node scripts/dry-run.mjs --draft-a <MOCK_DRAFT_ID>
+```
+
+To see it in the actual interface rather than a terminal, open the site with the
+same id: `https://your-domain/?draftA=<MOCK_DRAFT_ID>`. The Grades tab renders
+from that draft and labels itself a rehearsal so nobody mistakes it for real.
 
 ## Tests
 
@@ -147,6 +189,47 @@ Added: a Draft Board tab with every pick from both drafts and ADP deltas,
 snapshot match-rate reporting, hash routing so a refresh keeps your tab,
 loading skeletons, a playoff cut line in the standings, keyboard focus styles,
 and reduced-motion support.
+
+## Why construction was rewritten
+
+The first version started at 100 and docked five points here and there, so any
+roster that could field a lineup scored 100 and the component graded A+ for all
+twenty teams. A quarter of the grade was doing no work.
+
+It now docks meaningfully — nine points per surplus quarterback or tight end,
+eleven for a second kicker, up to eighteen for missing flex depth, five per
+starter beyond two sharing a bye week — and is percentiled rather than mapped
+from a fixed band. Bye weeks come from `player_bye_week` in the rankings
+response, and if a snapshot lacks them the penalty is skipped rather than
+guessed at.
+
+`npm run dry-run` simulates a few managers hoarding quarterbacks, collecting
+tight ends, taking two kickers and ignoring bye weeks, so the component has
+something to separate and you can see the reasons it gives.
+
+## Why kickers are not steals
+
+The first real dry run had a kicker or a defense as the best-value pick on
+sixteen of twenty rosters. That was not a quirk of the data, it was structural:
+overall consensus rank puts those positions far below where anyone actually
+drafts them, so the gap is a constant and everybody gets the same free credit.
+
+Two fixes, both in `grade.js`. Rank gaps are centred per position, so a kicker
+only reads as a steal if it beat the other kickers. And projected points are
+converted to value over replacement, where replacement level is the last
+startable player at that position given the league's own starting slots and team
+count. A kicker projecting 145 clears replacement by about 10. A receiver
+projecting 145 clears it by 55.
+
+Then a blunter rule on top, because the arithmetic fix was not enough: kickers
+and defenses are excluded from every narrative award outright. Best value,
+biggest reach, draft MVP and the notable picks all draw from quarterbacks,
+running backs, receivers and tight ends only. However the numbers shake out,
+a kicker was never anybody's best pick.
+
+`scripts/selftest.mjs` asserts that no kicker or defense can appear as a best
+pick, a reach, or an MVP, and that a roster of nothing but kickers still names
+something rather than crashing.
 
 ## A note on the benchmark
 

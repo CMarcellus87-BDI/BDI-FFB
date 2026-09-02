@@ -529,7 +529,9 @@
   function setDraftStatus(html, tone = 'notice') {
     const el = $('draftStatus');
     el.className = tone;
-    el.innerHTML = html;
+    el.innerHTML = (state.rehearsal
+      ? '<b>Rehearsal.</b> These grades come from a draft id in the URL, not from your leagues. '
+      : '') + html;
   }
 
   async function loadDraftData() {
@@ -541,8 +543,19 @@
     state.drafts.B = db.status === 'fulfilled' ? (db.value || []) : [];
     await loadFantasyPros();
 
-    const pick = code => (state.drafts[code] || [])
-      .find(d => String(d.season) === String(CFG.season)) || (state.drafts[code] || [])[0] || null;
+    // Rehearsal mode. ?draftA=<id>&draftB=<id> points the grader at any draft,
+    // including a Sleeper mock, so draft night is not the first time this runs
+    // against real picks. Clearly banner-flagged so nobody mistakes it.
+    const params = new URLSearchParams(location.search);
+    const rehearse = code => params.get(`draft${code}`);
+    state.rehearsal = !!(rehearse('A') || rehearse('B'));
+
+    const pick = code => {
+      const forced = rehearse(code);
+      if (forced) return { draft_id: forced, season: String(CFG.season), status: 'complete' };
+      return (state.drafts[code] || []).find(d => String(d.season) === String(CFG.season))
+        || (state.drafts[code] || [])[0] || null;
+    };
     const A = pick('A'), B = pick('B');
 
     const [pa, pb] = await Promise.allSettled([
@@ -644,13 +657,27 @@
     return fpIndexCache;
   }
 
+  /* Reuse the grader's position-centred delta when grades exist, so the board
+   * and the reports never disagree about what counted as a steal. */
+  function gradedDelta(code, overall) {
+    for (const g of state.grades) {
+      if (g.code !== code) continue;
+      const hit = g.players.find(p => p.overall === overall);
+      if (hit) return hit.centered ?? null;
+    }
+    return null;
+  }
+
   function allPicks() {
     const index = fpIndex();
     const out = [];
     for (const code of ['A', 'B']) {
       const code_ = G.scoringCode(state.leagues[code] || {});
       for (const p of (state.picks[code] || [])) {
-        const team = teamFor(code, p.roster_id);
+        // Mock drafts have no rosters; fall back to the draft slot.
+        const hasRoster = p.roster_id !== null && p.roster_id !== undefined;
+        const team = hasRoster ? teamFor(code, p.roster_id) : null;
+        const slotKey = hasRoster ? null : `${code}:slot${p.draft_slot}`;
         // Read the snapshot directly so the board shows value even before
         // grades publish, and while only one draft has finished.
         const fp = index ? G.matchPlayer(p, index) : null;
@@ -659,11 +686,12 @@
           name: G.pickName(p),
           pos: G.normPos((p.metadata && p.metadata.position) || ''),
           nfl: (p.metadata && p.metadata.team) || '',
-          team: team ? team.name : `Roster ${p.roster_id}`,
+          team: team ? team.name : (slotKey ? `Slot ${p.draft_slot}` : `Roster ${p.roster_id}`),
           teamKey: team ? team.key : null,
           draft_slot: p.draft_slot, rosterId: p.roster_id,
           adp: fp ? G.adpOf(fp, code_) : null,
-          proj: fp ? G.projPoints(fp, code_) : null
+          proj: fp ? G.projPoints(fp, code_) : null,
+          centered: gradedDelta(code, Number(p.pick_no))
         });
       }
     }
@@ -674,7 +702,7 @@
   const slotOf = p => Number(p.draft_slot ?? p.rosterId ?? 0) || 0;
 
   function pickCellHTML(p) {
-    const delta = p.adp !== null ? Math.round(p.adp - p.overall) : null;
+    const delta = p.centered !== null ? Math.round(p.centered) : (p.adp !== null ? Math.round(p.adp - p.overall) : null);
     const tone = delta === null ? '' : delta >= 10 ? 'steal' : delta <= -10 ? 'reach' : '';
     return `<span class="pick-no">${p.overall}</span>
       <b class="pick-name">${esc(p.name)}</b>
@@ -725,7 +753,7 @@
         round = p.round;
         html.push(`<div class="board-round">Round ${round}</div>`);
       }
-      const delta = p.adp !== null ? Math.round(p.adp - p.overall) : null;
+      const delta = p.centered !== null ? Math.round(p.centered) : (p.adp !== null ? Math.round(p.adp - p.overall) : null);
       const tone = delta === null ? '' : delta >= 10 ? 'steal' : delta <= -10 ? 'reach' : '';
       html.push(`<button type="button" class="board-pick pos-col-${esc(p.pos || 'NA')} ${tone}"${p.teamKey ? ` data-boardteam="${esc(p.teamKey)}"` : ''}>
         <span class="board-no">${p.overall}</span>
@@ -771,15 +799,17 @@
     return h >>> 0;
   };
   const deterministicPick = (arr, key) => arr[stableHash(key) % arr.length];
-  const pickDelta = p => (p && p.adp !== null && p.adp !== undefined ? Math.round(p.adp - p.overall) : null);
+  /* Centred on the median gap for the pick's own position, so a kicker is only
+   * a steal if it beat the other kickers. */
+  const pickDelta = p => (p && p.centered !== null && p.centered !== undefined ? Math.round(p.centered) : null);
 
   function pickBlurb(p, type) {
     if (!p) return 'No qualifying pick.';
     const d = pickDelta(p);
     const slot = p.overall ? `Pick ${p.overall}` : 'This selection';
     if (type === 'best') {
-      if (d !== null && d >= 20) return `${slot}, ${d} spots later than consensus. Apparently everyone else forgot ${p.name} existed.`;
-      if (d !== null && d >= 8) return `${slot} beat consensus by ${d} picks. Patience, and the board actually rewarded it.`;
+      if (d !== null && d >= 20) return `${slot}, ${d} spots later than the field took comparable ${p.pos}s. Everyone else forgot ${p.name} existed.`;
+      if (d !== null && d >= 8) return `${slot} beat the going rate at ${p.pos} by ${d} picks. Patience, and the board rewarded it.`;
       return `${slot} paired fair market value with ${fmt(p.proj || 0)} projected points.`;
     }
     if (type === 'reach') {
@@ -787,7 +817,7 @@
       if (d !== null && d <= -10) return `${Math.abs(d)} spots ahead of consensus. It was treated as more of a suggestion.`;
       return 'The biggest reach on this roster was mild by draft-room standards.';
     }
-    if (type === 'mvp') return `${fmt(p.proj || 0)} projected points, the roster's main scoring engine.`;
+    if (type === 'mvp') return `${fmt(p.proj || 0)} projected points, ${fmt(p.vor || 0)} of it above replacement at ${p.pos}.`;
     return '';
   }
 
@@ -799,18 +829,19 @@
       used.add(p.overall);
       out.push({ p, label, blurb });
     };
-    const withAdp = g.players.filter(p => p.adp !== null);
+    const skill = g.players.filter(p => G.NARRATIVE_POSITIONS.has(p.pos));
+    const withAdp = skill.filter(p => p.adp !== null);
     const steal = [...withAdp].sort((a, b) => (b.adp - b.overall) - (a.adp - a.overall))[0];
     if (steal && pickDelta(steal) >= 10) {
-      add(steal, 'Value pick', `Fell ${pickDelta(steal)} spots past consensus and still carries ${fmt(steal.proj || 0)} projected points.`);
+      add(steal, 'Value pick', `Fell ${pickDelta(steal)} spots past the going rate at ${steal.pos}, worth ${fmt(steal.vor || 0)} over replacement.`);
     }
-    const late = [...g.players].filter(p => p.overall > 60 && p.proj > 0).sort((a, b) => b.proj - a.proj)[0];
-    if (late) add(late, 'Upside swing', `A later pick projecting ${fmt(late.proj)} points, which is where ceiling usually hides.`);
+    const late = [...skill].filter(p => p.overall > 60 && p.vor > 0).sort((a, b) => b.vor - a.vor)[0];
+    if (late) add(late, 'Upside swing', `A later pick worth ${fmt(late.vor)} over replacement at ${late.pos}, which is where ceiling hides.`);
     const questionable = [...withAdp].filter(p => pickDelta(p) <= -12).sort((a, b) => pickDelta(a) - pickDelta(b))[1];
     if (questionable) add(questionable, 'Questionable', `Went ${Math.abs(pickDelta(questionable))} spots ahead of consensus. This one gets remembered either way.`);
-    const efficient = [...g.players].filter(p => p.overall > 80 && p.proj > 0)
-      .sort((a, b) => (b.proj / b.overall) - (a.proj / a.overall))[0];
-    if (efficient) add(efficient, 'Late-round value', `${fmt(efficient.proj)} projected points from pick ${efficient.overall}. Boring, and it wins weeks.`);
+    const efficient = [...skill].filter(p => p.overall > 80 && p.vor > 0)
+      .sort((a, b) => b.vor - a.vor)[0];
+    if (efficient) add(efficient, 'Late-round value', `${fmt(efficient.vor)} over replacement from pick ${efficient.overall}. Boring, and it wins weeks.`);
     return out.slice(0, 3);
   }
 
@@ -857,10 +888,12 @@
     const opener = deterministicPick(GRADE_BANK[g.letter] || GRADE_BANK.C, `${g.team.key}-${g.letter}-${g.rank}`);
     const slots = G.startingSlots(state.leagues[g.code] || {});
     const reasons = [];
-    if ((c.QB || 0) >= 4 && !slots.SUPER_FLEX) {
+    if ((c.QB || 0) >= 3 && !slots.SUPER_FLEX) {
       reasons.push(`${c.QB} quarterbacks for one starting slot is an admirably aggressive commitment to optionality.`);
     }
-    if ((c.TE || 0) >= 4) reasons.push(`${c.TE} tight ends suggests either a strategy or an unresolved personal issue.`);
+    if ((c.TE || 0) >= 3) reasons.push(`${c.TE} tight ends suggests either a strategy or an unresolved personal issue.`);
+    const bye = (g.constructionNotes || []).find(n => n.includes('on bye'));
+    if (bye) reasons.push(`There are ${bye}, which is a loss you scheduled in advance.`);
     if (bestD !== null && bestD >= 15) reasons.push(`${g.best.name} falling ${bestD} spots past ADP was the clearest win.`);
     if (reachD !== null && reachD <= -18) reasons.push(`${g.reach.name} went ${Math.abs(reachD)} picks early and will need explaining.`);
     reasons.push(`${g.strength} is the strongest room; ${g.weakness} is where the depth chart gets uncomfortable.`);
@@ -887,8 +920,11 @@
       ['Best value', `<b>${esc(g.best ? g.best.name : '—')}</b>${bestD !== null ? ` <span class="delta good">${signed(bestD)} vs consensus</span>` : ''}<br>${esc(pickBlurb(g.best, 'best'))}`],
       ['Biggest reach', `<b>${esc(g.reach ? g.reach.name : '—')}</b>${reachD !== null ? ` <span class="delta bad">${signed(reachD)} vs consensus</span>` : ''}<br>${esc(pickBlurb(g.reach, 'reach'))}`],
       ['Draft MVP', `<b>${esc(g.mvp ? g.mvp.name : '—')}</b><br>${esc(pickBlurb(g.mvp, 'mvp'))}`],
+      ['Roster shape', g.constructionNotes && g.constructionNotes.length
+        ? esc(g.constructionNotes.join(', '))
+        : 'Nothing structurally wrong with it.'],
       ['Room by room', ['QB', 'RB', 'WR', 'TE'].map(p =>
-        `${p} ${Math.round(g.positions[p] || 0)}<sup>th</sup> pct`).join(' · ')]
+        `${p} ${Math.round(g.positions[p] || 0)}<sup>th</sup> pct`).join(' \u00b7 ')]
     ];
 
     openModal(`${g.team.name} · ${g.letter} · ${g.rank} of ${state.grades.length}${crown}`, `

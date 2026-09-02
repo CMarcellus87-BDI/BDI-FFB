@@ -169,7 +169,10 @@ async function fetchRankings(type) {
       const name = nameOf(row);
       if (!name) continue;
       const pos = posOf(row);
-      const rec = (out[scoring][keyOf(name, pos)] ||= { name, position: pos, team: teamOf(row), fpid: row.player_id ?? row.fpid });
+      const rec = (out[scoring][keyOf(name, pos)] ||= {
+        name, position: pos, team: teamOf(row), fpid: row.player_id ?? row.fpid,
+        bye: firstNumber(row, ['player_bye_week', 'bye_week', 'bye'])[0]
+      });
       const [adp, adpField] = firstNumber(row, ADP_FIELDS);
       const [ecr, ecrField] = firstNumber(row, ECR_FIELDS);
       if (adp !== null) { rec.adp = adp; fields.adp_field = adpField; }
@@ -183,6 +186,7 @@ async function fetchRankings(type) {
 async function fetchProjections() {
   const out = {};
   const fields = {};
+  const raw = {};
   for (const position of POSITIONS) {
     let payload;
     try {
@@ -191,7 +195,10 @@ async function fetchProjections() {
       console.warn(`  warning: ${position} projections failed — ${err.message}`);
       continue;
     }
-    for (const row of rowsOf(payload)) {
+    const rows = rowsOf(payload);
+    if (rows[0]) raw[position] = rows[0];
+    console.log(`  ${position}: ${rows.length} rows`);
+    for (const row of rows) {
       const name = nameOf(row);
       if (!name) continue;
       const pos = posOf(row, position);
@@ -205,7 +212,7 @@ async function fetchProjections() {
     }
     await sleep(200);
   }
-  return { out, fields };
+  return { out, fields, raw };
 }
 
 async function build() {
@@ -226,7 +233,7 @@ async function build() {
   }
   console.log(`  using type=${usedType}`);
 
-  const { out: projections, fields: projFields } = await fetchProjections();
+  const { out: projections, fields: projFields, raw: projRaw } = await fetchProjections();
 
   const keys = new Set(Object.keys(projections));
   for (const byKey of Object.values(rankings)) for (const k of Object.keys(byKey)) keys.add(k);
@@ -237,6 +244,7 @@ async function build() {
     for (const [scoring, byKey] of Object.entries(rankings)) {
       const r = byKey[k];
       if (!base.name && r) base = { name: r.name, position: r.position, team: r.team, fpid: r.fpid };
+      if (base.bye == null && r && r.bye != null) base.bye = r.bye;
       base[`adp_${scoring.toLowerCase()}`] = r?.adp ?? null;
       base[`ecr_${scoring.toLowerCase()}`] = r?.ecr ?? null;
     }
@@ -246,12 +254,28 @@ async function build() {
   const has = (p, prefix) => SCORINGS.some(s => p[`${prefix}_${s.toLowerCase()}`]);
   const withPoints = players.filter(p => has(p, 'points')).length;
   const withAdp = players.filter(p => has(p, 'adp')).length;
+  const withBye = players.filter(p => p.bye != null).length;
   const scoringVaries = players.some(p => p.points_ppr && p.points_std && p.points_ppr !== p.points_std);
 
   console.log(`\n  players: ${players.length}`);
   console.log(`  with projected points: ${withPoints}   (std/half/ppr from ` +
     `${projFields.points_std_field || '?'}/${projFields.points_half_field || '?'}/${projFields.points_ppr_field || '?'})`);
   console.log(`  with consensus rank: ${withAdp}   (field: ${rankFields.adp_field || 'NONE FOUND'})`);
+  console.log(`  with bye week: ${withBye}${withBye < 200 ? '   <-- bye-week penalties will be skipped' : ''}`);
+
+  // Per position, because a whole position quietly arriving without points is
+  // the failure that matters and the totals above hide it.
+  console.log('\n  points coverage by position:');
+  for (const pos of POSITIONS) {
+    const at = players.filter(p => p.position === pos);
+    const withPts = at.filter(p => has(p, 'points')).length;
+    const flag = at.length && !withPts ? '   <-- NO POINTS AT ALL' : withPts < at.length ? '   <-- partial' : '';
+    console.log(`    ${pos.padEnd(4)} ${String(at.length).padStart(4)} players   ${String(withPts).padStart(4)} with points${flag}`);
+    if (at.length && !withPts && projRaw[pos]) {
+      console.log(`      raw row: ${JSON.stringify(projRaw[pos]).slice(0, 500)}`);
+      console.log('      ^ if the points key there is not in POINT_FIELDS, add it at the top of this file');
+    }
+  }
   console.log(`  with ECR: ${players.filter(p => has(p, 'ecr')).length}   (field: ${rankFields.ecr_field || 'NONE FOUND'})`);
   if (!scoringVaries && withPoints) {
     console.log('  note: PPR and standard points are identical, so the scoring parameter\n' +
