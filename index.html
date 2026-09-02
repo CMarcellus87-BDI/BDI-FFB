@@ -1,68 +1,234 @@
-<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="theme-color" content="#0d1117"><title>BDI Fantasy HQ</title><link rel="stylesheet" href="styles.css?v=0.5.0"></head><body>
-<div class="app" id="app">
-  <header class="topbar"><div class="brand"><img src="bdi-logo.png" alt="BDI logo"><div><div class="eyebrow">2026 Fantasy Football</div><h1>BDI Fantasy HQ</h1><p>Two Sleeper leagues. One office-wide competition.</p></div></div><div class="status"><strong id="statusText">Connecting to Sleeper…</strong><br><span id="statusSub">League A + League B</span></div></header>
-  <nav class="nav" aria-label="Primary"><button data-view="home" class="active">Home</button><button data-view="teams">Teams</button><button data-view="draft">Draft Grades</button><button data-view="activity">Activity</button><button data-view="playoffs">Playoffs</button></nav>
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="theme-color" content="#070a0d">
+<meta name="description" content="Standings, rosters, draft grades and playoff scoring for BDI's two Sleeper fantasy football leagues.">
+<title>BDI Fantasy HQ</title>
+<link rel="icon" href="bdi-logo.png">
+<link rel="stylesheet" href="styles.css?v=0.6.0">
+</head>
+<body>
+<div class="app booting" id="app">
+
+  <header class="topbar">
+    <div class="brand">
+      <img src="bdi-logo.png" alt="">
+      <div>
+        <p class="kicker">2026 season</p>
+        <h1>BDI Fantasy HQ</h1>
+        <p class="tagline">Two Sleeper leagues, one office-wide competition.</p>
+      </div>
+    </div>
+    <div class="status" role="status">
+      <strong id="statusText">Connecting to Sleeper</strong>
+      <span id="statusSub">League A and League B</span>
+    </div>
+  </header>
+
+  <nav class="nav" aria-label="Sections">
+    <button type="button" data-view="home" class="active">Home</button>
+    <button type="button" data-view="teams">Teams</button>
+    <button type="button" data-view="draft">Grades</button>
+    <button type="button" data-view="board">Board</button>
+    <button type="button" data-view="activity">Activity</button>
+    <button type="button" data-view="playoffs">Playoffs</button>
+  </nav>
 
   <main>
+
+    <!-- Home -->
     <section class="view active" id="view-home">
-      <div class="hero"><div class="hero-main"><div class="eyebrow">BDI League-Wide View</div><h2>One scoreboard for all 20 teams.</h2><p>Official standings stay separate by league. Power rankings, rosters, draft grades and transaction visibility bring the entire BDI field together.</p></div><div class="hero-side"><h3>League status</h3><div class="mini-grid"><div class="mini-stat"><b id="teamCount">20</b><span>Teams</span></div><div class="mini-stat"><b>2</b><span>Leagues</span></div><div class="mini-stat"><b id="weekStat">Pre</b><span>NFL week</span></div><div class="mini-stat"><b id="joinedStat">0/20</b><span>Joined</span></div></div></div></div>
-      <div class="grid-2"><section class="panel"><div class="panel-header"><h3>League A standings</h3><span class="league-pill">A</span></div><div class="table-wrap"><table class="table"><thead><tr><th>#</th><th>Team</th><th>W-L</th><th>PF</th><th class="hide-mobile">PA</th></tr></thead><tbody id="standingsA"><tr><td colspan="5">Loading…</td></tr></tbody></table></div></section><section class="panel"><div class="panel-header"><h3>League B standings</h3><span class="league-pill">B</span></div><div class="table-wrap"><table class="table"><thead><tr><th>#</th><th>Team</th><th>W-L</th><th>PF</th><th class="hide-mobile">PA</th></tr></thead><tbody id="standingsB"><tr><td colspan="5">Loading…</td></tr></tbody></table></div></section></div>
-      <div class="grid-2" style="margin-top:16px"><section class="panel"><div class="panel-header"><h3>BDI Power Rankings · Top 5</h3><span class="subtle" id="powerMethod">Activates after games begin</span></div><div class="power-list" id="powerList"><div class="empty">Power rankings will combine both leagues once Week 1 results exist.</div></div></section><section class="panel"><div class="panel-header"><h3>Recent BDI activity</h3><span class="subtle">Both leagues</span></div><div class="activity-list" id="homeActivity"><div class="empty">Waivers, trades and adds/drops will appear here when league activity begins.</div></div></section></div>
-    </section>
-
-    <section class="view" id="view-teams"><div class="panel"><div class="panel-header"><div><h3>All 20 Teams</h3><div class="subtle">Cross-league roster visibility</div></div></div><div class="teams-toolbar"><button class="filter-btn active" data-teamfilter="all">All</button><button class="filter-btn" data-teamfilter="A">League A</button><button class="filter-btn" data-teamfilter="B">League B</button></div><div class="team-grid" id="teamGrid"></div></div></section>
-
-    <section class="view" id="view-draft"><div class="draft-banner"><div class="eyebrow">Frozen methodology</div><h3>BDI Draft Grader</h3><p style="margin:0;color:var(--muted)">35% projection value vs. draft slot · 25% ADP efficiency · 25% roster construction · 15% projected optimal-lineup strength. Each completed league publishes immediately; after both drafts, all 20 teams are re-normalized together for the overall BDI ranking.</p></div><div id="draftStatus" class="notice">Checking Sleeper drafts and the FantasyPros snapshot…</div><div class="draft-rank-list" id="draftRankList" style="margin-top:16px"></div></section>
-
-
-    <section class="view" id="view-playoffs">
-      <div class="playoff-hero">
-        <div>
-          <div class="eyebrow">2026 BDI Championship</div>
-          <h2>8 teams. 3 weeks. Highest scores survive.</h2>
-          <p>Top four teams from League A and top four from League B qualify. There are no head-to-head playoff matchups — every round is a combined BDI scoring leaderboard.</p>
+      <div class="hero">
+        <div class="hero-main">
+          <h2>One scoreboard for all twenty teams.</h2>
+          <p>Standings stay separate by league, the way Sleeper runs them. Everything else — power rankings,
+             rosters, draft grades, transactions and the playoff chase — is pooled across the whole office.</p>
         </div>
-        <div class="playoff-path" aria-label="Playoff progression">
-          <span>20</span><b>→</b><span>8</span><b>→</b><span>4</span><b>→</b><span>2</span><b>→</b><span class="champion-node">🏆 1</span>
+        <div class="hero-side">
+          <h3>Right now</h3>
+          <div class="mini-grid">
+            <div class="mini-stat"><b id="teamCount">20</b><span>Teams</span></div>
+            <div class="mini-stat"><b>2</b><span>Leagues</span></div>
+            <div class="mini-stat"><b id="weekStat">Pre</b><span>NFL week</span></div>
+            <div class="mini-stat"><b id="joinedStat">0/20</b><span>Managers in</span></div>
+          </div>
         </div>
       </div>
 
-      <div class="playoff-round-grid">
-        <article class="round-card"><div class="round-week">WEEK 15</div><h3>Elite Eight</h3><p>8 qualifiers compete. <b>Top 4 scores advance.</b></p></article>
-        <article class="round-card"><div class="round-week">WEEK 16</div><h3>Final Four</h3><p>4 survivors compete. <b>Top 2 scores advance.</b></p></article>
-        <article class="round-card final"><div class="round-week">WEEK 17</div><h3>BDI Championship</h3><p>2 finalists compete. <b>Highest score wins.</b></p></article>
-      </div>
-
-      <div class="playoff-grid">
+      <div class="grid-2">
         <section class="panel">
-          <div class="panel-header"><div><h3 id="playoffPictureTitle">Current Playoff Teams</h3><div class="subtle" id="playoffPictureSub">Top four in each league qualify</div></div><span class="league-pill">LIVE PICTURE</span></div>
-          <div id="playoffPicture"><div class="empty">Loading playoff picture…</div></div>
+          <div class="panel-header"><h3>League A</h3><span class="league-pill">A</span></div>
+          <div class="table-wrap">
+            <table class="table">
+              <thead><tr><th>#</th><th>Team</th><th>W-L</th><th>Points</th><th class="hide-mobile">Against</th></tr></thead>
+              <tbody id="standingsA"><tr><td colspan="5" class="cell-empty">Loading standings</td></tr></tbody>
+            </table>
+          </div>
         </section>
         <section class="panel">
-          <div class="panel-header"><div><h3>Playoff Rules</h3><div class="subtle">Simple on purpose</div></div></div>
-          <div class="rules-list">
-            <div><b>Qualification</b><span>Top 4 finishers in League A + top 4 finishers in League B.</span></div>
-            <div><b>Advancement</b><span>Weekly fantasy score only. No head-to-head playoff matchups.</span></div>
-            <div><b>Week 15</b><span>8 teams → 4 highest scores advance.</span></div>
-            <div><b>Week 16</b><span>4 teams → 2 highest scores advance.</span></div>
-            <div><b>Week 17</b><span>2 teams → highest score is BDI Champion.</span></div>
+          <div class="panel-header"><h3>League B</h3><span class="league-pill">B</span></div>
+          <div class="table-wrap">
+            <table class="table">
+              <thead><tr><th>#</th><th>Team</th><th>W-L</th><th>Points</th><th class="hide-mobile">Against</th></tr></thead>
+              <tbody id="standingsB"><tr><td colspan="5" class="cell-empty">Loading standings</td></tr></tbody>
+            </table>
           </div>
         </section>
       </div>
 
-      <section class="panel playoff-live-panel" style="margin-top:16px">
-        <div class="panel-header"><div><h3 id="playoffLiveTitle">Road to the Championship</h3><div class="subtle" id="playoffLiveSub">Live scoring activates in Week 15</div></div><span class="tag" id="playoffLiveBadge">WEEKS 15–17</span></div>
-        <div id="playoffLiveBoard"><div class="empty">Once the playoffs begin, this becomes the live cut-line leaderboard.</div></div>
-      </section>
-
-      <div class="playoff-why">
-        <b>Why Weeks 15–17?</b> Week 14 still contains NFL byes. Week 18 creates significant starter-rest risk. The BDI Championship therefore runs Weeks 15 through 17.
+      <div class="grid-2 stack-gap">
+        <section class="panel">
+          <div class="panel-header"><h3>Power rankings, top five</h3><span class="subtle" id="powerMethod">Starts after Week 1</span></div>
+          <div class="power-list" id="powerList"><div class="empty"><b>No games played yet</b></div></div>
+        </section>
+        <section class="panel">
+          <div class="panel-header"><h3>Latest moves</h3><span class="subtle">Both leagues</span></div>
+          <div class="activity-list" id="homeActivity"><div class="empty"><b>Nothing has happened yet</b><span>Trades and waiver claims show up here.</span></div></div>
+        </section>
       </div>
     </section>
 
-    <section class="view" id="view-activity"><div class="panel"><div class="panel-header"><div><h3>Combined BDI Activity</h3><div class="subtle">Trades · waivers · free-agent moves · drops</div></div><select id="activityWeek" aria-label="Activity week"></select></div><div class="activity-toolbar"><button class="filter-btn active" data-activityfilter="all">All</button><button class="filter-btn" data-activityfilter="trade">Trades</button><button class="filter-btn" data-activityfilter="waiver">Waivers</button><button class="filter-btn" data-activityfilter="free_agent">Adds/Drops</button><button class="filter-btn" data-activityfilter="A">League A</button><button class="filter-btn" data-activityfilter="B">League B</button></div><div class="activity-list" id="activityList"><div class="empty">Open this tab after league activity begins.</div></div></section>
+    <!-- Teams -->
+    <section class="view" id="view-teams">
+      <div class="panel">
+        <div class="panel-header">
+          <div><h3>All twenty teams</h3><div class="subtle">Open any team to see the full roster</div></div>
+        </div>
+        <div class="toolbar">
+          <button type="button" class="filter-btn active" data-teamfilter="all">All</button>
+          <button type="button" class="filter-btn" data-teamfilter="A">League A</button>
+          <button type="button" class="filter-btn" data-teamfilter="B">League B</button>
+        </div>
+        <div class="team-grid" id="teamGrid"></div>
+      </div>
+    </section>
+
+    <!-- Draft grades -->
+    <section class="view" id="view-draft">
+      <div class="draft-banner">
+        <h3>The BDI draft grader</h3>
+        <p>Every drafted roster is measured on four things and then ranked against the whole field:
+           value relative to where the pick was made (35%), discipline against consensus rank (25%),
+           roster construction against the league's own starting slots (25%), and projected starting
+           lineup strength (15%). The method was frozen before either draft began.</p>
+      </div>
+      <div id="draftStatus" class="notice">Checking the drafts and the FantasyPros snapshot</div>
+      <div id="snapshotHealth"></div>
+      <div class="draft-rank-list" id="draftRankList"></div>
+    </section>
+
+    <!-- Draft board -->
+    <section class="view" id="view-board">
+      <div class="panel">
+        <div class="panel-header">
+          <div><h3>Every pick, both drafts</h3><div class="subtle" id="boardMeta">Waiting on the first pick</div></div>
+        </div>
+        <div class="toolbar">
+          <button type="button" class="filter-btn active" data-boardfilter="all">Both leagues</button>
+          <button type="button" class="filter-btn" data-boardfilter="A">League A</button>
+          <button type="button" class="filter-btn" data-boardfilter="B">League B</button>
+          <span class="toolbar-gap"></span>
+          <button type="button" class="filter-btn active" data-boardsort="pick">Draft order</button>
+          <button type="button" class="filter-btn" data-boardsort="value">Best value</button>
+        </div>
+        <div class="board-legend">
+          <span class="chip steal">Fell 10+ past consensus</span>
+          <span class="chip fair">Near consensus</span>
+          <span class="chip reach">Taken 10+ early</span>
+        </div>
+        <div class="board-list" id="boardList"></div>
+      </div>
+    </section>
+
+    <!-- Activity -->
+    <section class="view" id="view-activity">
+      <div class="panel">
+        <div class="panel-header">
+          <div><h3>Every move in both leagues</h3><div class="subtle">Trades, waiver claims, adds and drops</div></div>
+          <select id="activityWeek" aria-label="Week"></select>
+        </div>
+        <div class="toolbar">
+          <button type="button" class="filter-btn active" data-activityfilter="all">All</button>
+          <button type="button" class="filter-btn" data-activityfilter="trade">Trades</button>
+          <button type="button" class="filter-btn" data-activityfilter="waiver">Waivers</button>
+          <button type="button" class="filter-btn" data-activityfilter="free_agent">Adds and drops</button>
+          <span class="toolbar-gap"></span>
+          <button type="button" class="filter-btn" data-activityfilter="A">League A</button>
+          <button type="button" class="filter-btn" data-activityfilter="B">League B</button>
+        </div>
+        <div class="activity-list" id="activityList"><div class="empty"><b>Open this after the season starts</b></div></div>
+      </div>
+    </section>
+
+    <!-- Playoffs -->
+    <section class="view" id="view-playoffs">
+      <div class="playoff-hero">
+        <div>
+          <h2>Eight teams, three weeks, highest scores survive.</h2>
+          <p>The top four from each league qualify. There are no head-to-head playoff matchups —
+             every round is one combined scoring leaderboard across both leagues.</p>
+        </div>
+        <div class="playoff-path" aria-label="Field size by round">
+          <span>20</span><i></i><span>8</span><i></i><span>4</span><i></i><span>2</span><i></i><span class="champion-node">1</span>
+        </div>
+      </div>
+
+      <div class="playoff-round-grid">
+        <article class="round-card"><p class="round-week">Week 15</p><h3>Elite eight</h3><p>Eight qualifiers play. The four highest scores advance.</p></article>
+        <article class="round-card"><p class="round-week">Week 16</p><h3>Final four</h3><p>Four survivors play. The two highest scores advance.</p></article>
+        <article class="round-card final"><p class="round-week">Week 17</p><h3>Championship</h3><p>Two finalists play. The highest score wins it.</p></article>
+      </div>
+
+      <div class="playoff-grid">
+        <section class="panel">
+          <div class="panel-header">
+            <div><h3 id="playoffPictureTitle">Where the field stands</h3><div class="subtle" id="playoffPictureSub">Top four in each league qualify</div></div>
+          </div>
+          <div id="playoffPicture"><div class="empty"><b>Loading the playoff picture</b></div></div>
+        </section>
+        <section class="panel">
+          <div class="panel-header"><div><h3>The rules</h3><div class="subtle">Deliberately simple</div></div></div>
+          <div class="rules-list">
+            <div><b>Qualifying</b><span>Top four in League A plus top four in League B, on the standings through Week 14.</span></div>
+            <div><b>Advancing</b><span>Weekly fantasy score alone. No head-to-head matchups.</span></div>
+            <div><b>Week 15</b><span>Eight teams, four advance.</span></div>
+            <div><b>Week 16</b><span>Four teams, two advance.</span></div>
+            <div><b>Week 17</b><span>Two teams. Highest score is the BDI champion.</span></div>
+          </div>
+        </section>
+      </div>
+
+      <section class="panel playoff-live-panel stack-gap">
+        <div class="panel-header">
+          <div><h3 id="playoffLiveTitle">Road to the championship</h3><div class="subtle" id="playoffLiveSub">Live scoring starts in Week 15</div></div>
+          <span class="tag" id="playoffLiveBadge">Weeks 15–17</span>
+        </div>
+        <div id="playoffLiveBoard"><div class="empty"><b>Not yet</b><span>This becomes the live cut-line leaderboard when the playoffs begin.</span></div></div>
+      </section>
+
+      <p class="playoff-why"><b>Why weeks 15 to 17.</b> Week 14 still has NFL byes and Week 18 carries real
+        starter-rest risk, so the championship runs in the window where everybody's roster is actually playing.</p>
+    </section>
+
   </main>
-  <div class="footer">BDI Fantasy HQ · PRE-DRAFT BUILD v0.5.0 · PLAYOFFS · Sleeper is the league source of truth</div>
+
+  <p class="footer">BDI Fantasy HQ v0.6.0 · Sleeper is the source of truth for both leagues</p>
 </div>
-<div class="modal" id="modal"><div class="modal-card"><div class="modal-head"><h3 id="modalTitle">Details</h3><button class="close" id="modalClose" aria-label="Close">×</button></div><div id="modalBody" style="margin-top:14px"></div></div></div>
-<script src="config.js?v=0.5.0"></script><script src="app.js?v=0.5.0"></script></body></html>
+
+<div class="modal" id="modal" role="dialog" aria-modal="true" aria-labelledby="modalTitle">
+  <div class="modal-card">
+    <div class="modal-head">
+      <h3 id="modalTitle">Details</h3>
+      <button class="close" id="modalClose" type="button" aria-label="Close">&times;</button>
+    </div>
+    <div id="modalBody"></div>
+  </div>
+</div>
+
+<script src="config.js?v=0.6.0"></script>
+<script src="grade.js?v=0.6.0"></script>
+<script src="app.js?v=0.6.0"></script>
+</body>
+</html>
