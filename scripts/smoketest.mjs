@@ -42,6 +42,9 @@ const picksFor = () => {
       const idx = ((no * 7) % 200) + 1;
       out.push({
         pick_no: no, round, roster_id: team, player_id: String(idx),
+        // Sleeper's draft_slot is the board column, so it stays fixed for a
+        // team across every round. The pick order snakes; the column does not.
+        draft_slot: team,
         metadata: { first_name: 'Player', last_name: String(idx), position: FP_PLAYERS[idx - 1].position }
       });
       no++;
@@ -175,6 +178,26 @@ test('the draft board lists every pick from both leagues', async () => {
   assert.ok(board.querySelectorAll('.board-round').length >= 15);
   assert.ok(doc.querySelectorAll('#boardGrid .dboard').length === 2, 'a grid per league');
   assert.ok(doc.querySelectorAll('#boardGrid .dboard-cell.head').length >= 20, 'a column header per slot');
+  // With real draft_slot values the grid must still be exactly 10 columns per
+  // league, not 20 from snake ordering creating phantom slots.
+  const headers = [...doc.querySelectorAll('#boardGrid .dboard')].map(
+    d => d.querySelectorAll(':scope > .dboard-cell.head').length);
+  assert.deepEqual(headers, [11, 11], `expected a round column plus ten slots, got ${headers}`);
+  const filled = doc.querySelectorAll('#boardGrid .dboard-cell:not(.head):not(.rnd):not(.empty-cell)').length;
+  assert.equal(filled, 300, `every pick should land in a cell, got ${filled}`);
+  // A column must belong to exactly one team, or the board is lying about who
+  // picked what.
+  const firstBoard = doc.querySelector('#boardGrid .dboard');
+  const cols = firstBoard.querySelectorAll(':scope > .dboard-cell.head').length - 1;
+  const owners = new Map();
+  [...firstBoard.querySelectorAll(':scope > .dboard-cell')].forEach((cell, i) => {
+    if (cell.classList.contains('head') || cell.classList.contains('rnd')) return;
+    const col = i % (cols + 1);
+    const team = cell.getAttribute('data-boardteam');
+    if (!team) return;
+    if (!owners.has(col)) owners.set(col, team);
+    assert.equal(owners.get(col), team, `column ${col} has two owners`);
+  });
   assert.match(text(doc, 'boardMeta'), /matched to consensus rank/);
   assert.ok(board.querySelector('.board-pick.steal'), 'expect at least one value pick');
   assert.ok(board.querySelector('.board-pick.pos-col-RB'), 'position colour should be applied');

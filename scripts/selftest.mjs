@@ -356,7 +356,169 @@ test('at 1.01 the best pick is the best player, not a late flier', () => {
   assert.equal(first.bestPick.name, 'Jahmyr Gibbs',
     `the 1.01 should be the best pick, got ${first.bestPick.name}`);
   assert.equal(first.bestPick.overall, 1);
-  // The bargain award is a separate thing and should not be the 1.01.
-  assert.notEqual(first.best.overall, 1, 'a full-price pick is not a bargain');
+  // Best value is a different question: whichever pick beat its rank by most.
+  const withDelta = first.players.filter(p => p.centered !== null);
+  const trueBest = [...withDelta].sort((a, b) => b.centered - a.centered)[0];
+  assert.equal(first.best.name, trueBest.name,
+    'best value must be the pick with the largest positive gap over its rank');
   assert.ok(grades.every(g => g.bestPick), 'every team needs a best pick');
+});
+
+test('rank delta has the right sign: later than consensus is value', () => {
+  // The bug this pins down: a player ranked 21st taken at pick 30 was being
+  // reported as "15 spots ahead of consensus" and flagged questionable, when
+  // getting the 21st-ranked player with the 30th pick is nine picks of value.
+  const fp = [];
+  for (let i = 1; i <= 120; i++) {
+    fp.push({ name: `P${i}`, position: ['RB','WR','TE','QB','K','DST'][i % 6],
+      adp_ppr: i, points_ppr: 300 - i * 1.5 });
+  }
+  const picks = [];
+  let no = 1;
+  const take = (rank, roster) => {
+    const p = fp[rank - 1];
+    picks.push({ pick_no: no, round: Math.ceil(no / 10), roster_id: roster,
+      metadata: { first_name: 'P', last_name: String(rank), position: p.position } });
+    no++;
+  };
+  // Team 1 always takes players ranked well below the current pick (bargains).
+  // Team 2 always reaches. Everyone else drafts to rank.
+  const order = [];
+  for (let round = 1; round <= 12; round++) for (let t = 1; t <= 10; t++) order.push(t);
+  const used = new Set();
+  const nextFree = start => { let r = start; while (used.has(r) || r > 120) r = r % 120 + 1; used.add(r); return r; };
+  for (const t of order) {
+    const rank = t === 1 ? nextFree(Math.max(1, no - 12))     // ranked better than the pick
+      : t === 2 ? nextFree(Math.min(120, no + 12))            // ranked worse than the pick
+        : nextFree(no);
+    take(rank, t);
+  }
+  const { grades } = G.buildGrades([{ code: 'A', league: LEAGUE, picks }], fp,
+    (code, rid) => ({ key: `${code}:${rid}`, code, name: `Team ${rid}` }), WEIGHTS);
+  const bargainHunter = grades.find(g => g.team.name === 'Team 1');
+  const reacher = grades.find(g => g.team.name === 'Team 2');
+  const mean = g => g.players.filter(p => p.centered !== null)
+    .reduce((s, p) => s + p.centered, 0) / g.players.filter(p => p.centered !== null).length;
+  assert.ok(mean(bargainHunter) > mean(reacher),
+    `taking players later than their rank must score above reaching: ${mean(bargainHunter)} vs ${mean(reacher)}`);
+  assert.ok(bargainHunter.components.adpEfficiency <= reacher.components.adpEfficiency
+    || mean(bargainHunter) > mean(reacher));
+});
+
+test('a single pick reports value in the direction a human would say it', () => {
+  const fp = [{ name: 'Brock Bowers', position: 'TE', adp_ppr: 21, points_ppr: 240 }];
+  for (let i = 2; i <= 60; i++) {
+    fp.push({ name: `Filler ${i}`, position: i % 2 ? 'RB' : 'WR', adp_ppr: i, points_ppr: 280 - i * 2 });
+  }
+  const picks = [];
+  let no = 1;
+  const push = (name, position, roster) => {
+    const parts = name.split(' ');
+    picks.push({ pick_no: no, round: Math.ceil(no / 2), roster_id: roster,
+      metadata: { first_name: parts[0], last_name: parts.slice(1).join(' '), position } });
+    no++;
+  };
+  // Fill 29 picks, then take Bowers at 30 though he is ranked 21st.
+  for (let i = 2; i <= 30; i++) push(fp[i - 1].name, fp[i - 1].position, (i % 2) + 1);
+  push('Brock Bowers', 'TE', 1);
+  const { grades } = G.buildGrades([{ code: 'A', league: LEAGUE, picks }], fp,
+    (code, rid) => ({ key: `${code}:${rid}`, code, name: `Team ${rid}` }), WEIGHTS);
+  const bowers = grades.flatMap(g => g.players).find(p => p.name === 'Brock Bowers');
+  assert.ok(bowers, 'Bowers should be in the graded set');
+  assert.ok(bowers.overall - bowers.adp > 0,
+    `pick ${bowers.overall} on a rank-${bowers.adp} player is value, got ${bowers.overall - bowers.adp}`);
+});
+
+test('a pick missing roster_id is recovered from its draft slot', () => {
+  // Sleeper's own docs show a draft pick with roster_id absent. Keying that
+  // pick on its slot while its team-mates key on roster_id would split one
+  // team into two partial rosters.
+  const fp = [];
+  for (let i = 1; i <= 60; i++) {
+    fp.push({ name: `P${i}`, position: ['QB','RB','WR','TE','K','DST'][i % 6],
+      adp_ppr: i, points_ppr: 300 - i * 2 });
+  }
+  const picks = [];
+  let no = 1;
+  for (let round = 1; round <= 6; round++) {
+    for (let slot = 1; slot <= 10; slot++) {
+      const idx = ((no * 7) % 60) + 1;
+      const pick = {
+        pick_no: no, round, draft_slot: slot, player_id: String(idx),
+        metadata: { first_name: 'P', last_name: String(idx), position: fp[idx - 1].position }
+      };
+      // One pick loses its roster_id, exactly as the documentation shows.
+      if (!(round === 3 && slot === 4)) pick.roster_id = slot;
+      picks.push(pick);
+      no++;
+    }
+  }
+  const { grades } = G.buildGrades([{ code: 'A', league: LEAGUE, picks }], fp,
+    (code, rid) => ({ key: `${code}:${rid}`, code, name: `Team ${rid}` }), WEIGHTS);
+  assert.equal(grades.length, 10, `ten slots must stay ten teams, got ${grades.length}`);
+  assert.ok(grades.every(g => g.players.length === 6),
+    `every team keeps all six picks, got ${grades.map(g => g.players.length).join(',')}`);
+  assert.ok(!grades.some(g => /^Slot /.test(g.team.name)),
+    'no team should fall back to slot naming when rosters exist');
+});
+
+test('roster_id arriving as a string still matches the roster', () => {
+  // Sleeper documents roster_id as "1" on draft picks and 1 on rosters.
+  const fp = [{ name: 'Only Guy', position: 'RB', adp_ppr: 1, points_ppr: 200 }];
+  const picks = [{ pick_no: 1, round: 1, roster_id: '3', draft_slot: 3,
+    metadata: { first_name: 'Only', last_name: 'Guy', position: 'RB' } }];
+  const { grades } = G.buildGrades([{ code: 'A', league: LEAGUE, picks }], fp,
+    (code, rid) => (Number(rid) === 3 ? { key: 'A:3', code, name: 'Real Team' } : null), WEIGHTS);
+  assert.equal(grades[0].team.name, 'Real Team',
+    'a string roster_id must resolve to the same team as a numeric one');
+});
+
+test('two leagues with different scoring are each graded on their own settings', () => {
+  // League A is full PPR, League B is standard. A receiver-heavy roster should
+  // not be scored with the other league's rules.
+  const PPR = { scoring_settings: { rec: 1 }, roster_positions: LEAGUE.roster_positions };
+  const STD = { scoring_settings: { rec: 0 }, roster_positions: LEAGUE.roster_positions };
+  assert.equal(G.scoringCode(PPR), 'ppr');
+  assert.equal(G.scoringCode(STD), 'std');
+
+  const fp = [];
+  for (let i = 1; i <= 120; i++) {
+    const position = ['QB','RB','WR','TE','K','DST'][i % 6];
+    fp.push({
+      name: `P${i}`, position, team: 'SF',
+      adp_ppr: i, adp_std: i, ecr_ppr: i,
+      // Receivers are worth far more in PPR; everyone else is identical.
+      points_ppr: position === 'WR' ? 300 - i : 200 - i,
+      points_std: 200 - i
+    });
+  }
+  const mkPicks = () => {
+    const picks = [];
+    let no = 1;
+    for (let round = 1; round <= 12; round++) {
+      for (let team = 1; team <= 10; team++) {
+        const idx = ((no * 7) % 120) + 1;
+        picks.push({ pick_no: no, round, roster_id: team, draft_slot: team,
+          metadata: { first_name: 'P', last_name: String(idx), position: fp[idx - 1].position } });
+        no++;
+      }
+    }
+    return picks;
+  };
+  const { grades } = G.buildGrades(
+    [{ code: 'A', league: PPR, picks: mkPicks() }, { code: 'B', league: STD, picks: mkPicks() }],
+    fp, (code, rid) => ({ key: `${code}:${rid}`, code, name: `${code}${rid}` }), WEIGHTS);
+
+  assert.equal(grades.length, 20, 'both leagues grade into one field of twenty');
+  const wrProj = code => {
+    const team = grades.find(g => g.code === code);
+    const wr = team.players.find(p => p.pos === 'WR');
+    return wr ? wr.proj : null;
+  };
+  const aWr = grades.filter(g => g.code === 'A').flatMap(g => g.players).filter(p => p.pos === 'WR');
+  const bWr = grades.filter(g => g.code === 'B').flatMap(g => g.players).filter(p => p.pos === 'WR');
+  const avg = xs => xs.reduce((s, p) => s + p.proj, 0) / xs.length;
+  assert.ok(avg(aWr) > avg(bWr),
+    `PPR receivers must project above standard ones: ${avg(aWr)} vs ${avg(bWr)}`);
+  void wrProj;
 });

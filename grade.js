@@ -398,13 +398,26 @@
       const levels = replacementLevels(fpPlayers, codeScoring, slots, teamCount);
       const baseline = buildBaseline(fpPlayers, codeScoring, maxPick, levels);
 
-      // Mock drafts are not attached to a league, so their picks carry
-      // roster_id: null and only a draft_slot. Grouping on slot lets a mock be
-      // graded, which is the whole point of being able to rehearse.
+      /* Mock drafts are not attached to a league, so their picks carry
+       * roster_id: null and only a draft_slot. Sleeper's own documentation also
+       * shows a pick in a real draft with roster_id absent.
+       *
+       * Keying each pick independently would split one team across a roster key
+       * and a slot key, producing eleven partial rosters in a ten-team league.
+       * So resolve slot to roster from the picks that do carry both, and only
+       * fall back to slot-keying when no pick in the draft has a roster at all. */
+      const slotToRoster = new Map();
+      for (const p of picks) {
+        if (p.roster_id !== null && p.roster_id !== undefined
+            && p.draft_slot !== null && p.draft_slot !== undefined) {
+          slotToRoster.set(String(p.draft_slot), p.roster_id);
+        }
+      }
       const teamKeyOf = p => {
         if (p.roster_id !== null && p.roster_id !== undefined) return p.roster_id;
-        if (p.draft_slot !== null && p.draft_slot !== undefined) return `slot${p.draft_slot}`;
-        return null;
+        if (p.draft_slot === null || p.draft_slot === undefined) return null;
+        const viaSlot = slotToRoster.get(String(p.draft_slot));
+        return viaSlot !== undefined ? viaSlot : `slot${p.draft_slot}`;
       };
       const byRoster = new Map();
       for (const p of picks) {
@@ -446,11 +459,15 @@
     const medianByPos = {};
     for (const pos of new Set(allRows.map(r => r.pos))) {
       const deltas = allRows.filter(r => r.pos === pos && r.adp !== null)
-        .map(r => r.adp - r.overall).sort((a, b) => a - b);
+        .map(r => r.overall - r.adp).sort((a, b) => a - b);
       medianByPos[pos] = deltas.length ? deltas[Math.floor(deltas.length / 2)] : 0;
     }
     for (const r of allRows) {
-      r.centered = r.adp === null ? null : (r.adp - r.overall) - (medianByPos[r.pos] || 0);
+      /* Consensus rank is where the player should have gone; overall is where he
+       * actually went. Taking the 21st-ranked player at pick 30 is nine picks
+       * of value, so it is overall minus rank, not the other way round. This
+       * was inverted, which rewarded reaching and punished bargains. */
+      r.centered = r.adp === null ? null : (r.overall - r.adp) - (medianByPos[r.pos] || 0);
     }
 
     /* "Best player" and "best bargain" are different questions, and collapsing

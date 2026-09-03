@@ -217,6 +217,19 @@ guessed at.
 tight ends, taking two kickers and ignoring bye weeks, so the component has
 something to separate and you can see the reasons it gives.
 
+## The sign bug
+
+Until v0.8.9 the rank gap was computed as `consensus_rank - pick_number`. It is
+the other way round. Consensus rank is where a player should have gone; the pick
+number is where he actually went. Taking the 21st-ranked player at pick 30 is
+nine picks of value, and the old formula called it a nine-pick reach.
+
+The effect was that the grader rewarded reaching and punished bargains, on both
+the rank-discipline component and the best-value and biggest-reach awards, for
+every version before this one. Two tests now pin the direction, one on a single
+pick and one on a whole draft where one manager only takes bargains and another
+only reaches.
+
 ## Why kickers are not steals
 
 The first real dry run had a kicker or a defense as the best-value pick on

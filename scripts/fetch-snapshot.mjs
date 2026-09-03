@@ -55,13 +55,35 @@ const DRAFT_TYPES = ['draft', 'dynasty'];
 const args = new Set(process.argv.slice(2));
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 
-async function call(params) {
+/* One transient failure used to drop a whole position. fetchProjections
+ * catches the error, warns, and continues, and the global guards still pass
+ * because the skill positions carry hundreds of players — so the script would
+ * cheerfully write a snapshot with no kickers in it. Retry properly. */
+async function call(params, attempts = 4) {
   const url = new URL(PROXY);
   for (const [k, v] of Object.entries(params)) url.searchParams.set(k, String(v));
-  const res = await fetch(url, { headers: { Accept: 'application/json' } });
-  const body = await res.text();
-  if (!res.ok) throw new Error(`HTTP ${res.status} — ${body.slice(0, 300)}`);
-  try { return JSON.parse(body); } catch { throw new Error(`Not JSON — ${body.slice(0, 200)}`); }
+  let last;
+  for (let attempt = 1; attempt <= attempts; attempt++) {
+    try {
+      const res = await fetch(url, { headers: { Accept: 'application/json' } });
+      const body = await res.text();
+      if (!res.ok) {
+        // A bad request will not become good by asking again.
+        if (res.status >= 400 && res.status < 500 && res.status !== 429) {
+          throw new Error(`HTTP ${res.status} — ${body.slice(0, 300)}`);
+        }
+        throw Object.assign(new Error(`HTTP ${res.status} — ${body.slice(0, 200)}`), { retryable: true });
+      }
+      try { return JSON.parse(body); } catch { throw new Error(`Not JSON — ${body.slice(0, 200)}`); }
+    } catch (err) {
+      last = err;
+      const retryable = err.retryable || err.name === 'TypeError' || /fetch failed|network|ECONN|timeout/i.test(err.message);
+      if (!retryable || attempt === attempts) break;
+      console.warn(`  retry ${attempt}/${attempts - 1} after: ${err.message.slice(0, 90)}`);
+      await sleep(600 * attempt);
+    }
+  }
+  throw last;
 }
 
 const rowsOf = p => (Array.isArray(p) ? p
@@ -301,11 +323,29 @@ async function build() {
   if (players.length < 250) problems.push(`only ${players.length} players`);
   if (withPoints < 150) problems.push(`only ${withPoints} carry projected points`);
   if (withAdp < 150) problems.push(`only ${withAdp} carry ADP`);
+  /* Per position, because the totals hide it. Kickers and defenses are a few
+   * dozen players against several hundred skill players, so losing both
+   * entirely still clears every global threshold. */
+  for (const pos of POSITIONS) {
+    const at = players.filter(p => p.position === pos);
+    const withPts = at.filter(p => has(p, 'points')).length;
+    if (!at.length) problems.push(`no ${pos} players at all`);
+    else if (!withPts) problems.push(`every ${pos} is missing projected points`);
+    else if (withPts < at.length * 0.25) {
+      problems.push(`only ${withPts} of ${at.length} ${pos} carry points`);
+    }
+  }
   if (problems.length) {
     console.error('\nRefusing to write the snapshot:');
     for (const p of problems) console.error(`  - ${p}`);
-    console.error('\nA snapshot this thin would publish twenty identical grades with\n' +
-      'nothing on the page explaining why. Run with --probe and fix the field lists.');
+    const positional = problems.some(p => /^(no |every |only \d+ of )/.test(p));
+    console.error(
+      positional
+        ? '\nA whole position is missing its projections. That is usually the API\n' +
+          'dropping one request, so run this again first. If it repeats, use --probe\n' +
+          'to see what that position actually returns.'
+        : '\nA snapshot this thin would publish twenty identical grades with nothing\n' +
+          'on the page explaining why. Run with --probe and check the field lists.');
     return 1;
   }
 

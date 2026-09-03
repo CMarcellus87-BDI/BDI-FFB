@@ -702,7 +702,7 @@
   const slotOf = p => Number(p.draft_slot ?? p.rosterId ?? 0) || 0;
 
   function pickCellHTML(p) {
-    const delta = p.centered !== null ? Math.round(p.centered) : (p.adp !== null ? Math.round(p.adp - p.overall) : null);
+    const delta = p.centered !== null ? Math.round(p.centered) : (p.adp !== null ? Math.round(p.overall - p.adp) : null);
     const tone = delta === null ? '' : delta >= 10 ? 'steal' : delta <= -10 ? 'reach' : '';
     return `<span class="pick-no">${p.overall}</span>
       <b class="pick-name">${esc(p.name)}</b>
@@ -744,7 +744,7 @@
   function renderBoardList(picks) {
     const wrap = $('boardList');
     const sorted = state.boardSort === 'value'
-      ? [...picks].sort((x, y) => ((y.adp || 0) - y.overall) - ((x.adp || 0) - x.overall))
+      ? [...picks].sort((x, y) => (y.overall - (y.adp || 0)) - (x.overall - (x.adp || 0)))
       : [...picks].sort((x, y) => x.overall - y.overall);
     let round = null;
     const html = [];
@@ -753,7 +753,7 @@
         round = p.round;
         html.push(`<div class="board-round">Round ${round}</div>`);
       }
-      const delta = p.centered !== null ? Math.round(p.centered) : (p.adp !== null ? Math.round(p.adp - p.overall) : null);
+      const delta = p.centered !== null ? Math.round(p.centered) : (p.adp !== null ? Math.round(p.overall - p.adp) : null);
       const tone = delta === null ? '' : delta >= 10 ? 'steal' : delta <= -10 ? 'reach' : '';
       html.push(`<button type="button" class="board-pick pos-col-${esc(p.pos || 'NA')} ${tone}"${p.teamKey ? ` data-boardteam="${esc(p.teamKey)}"` : ''}>
         <span class="board-no">${p.overall}</span>
@@ -841,7 +841,7 @@
     };
     const skill = g.players.filter(p => G.NARRATIVE_POSITIONS.has(p.pos));
     const withAdp = skill.filter(p => p.adp !== null);
-    const steal = [...withAdp].sort((a, b) => (b.adp - b.overall) - (a.adp - a.overall))[0];
+    const steal = [...withAdp].sort((a, b) => (b.overall - b.adp) - (a.overall - a.adp))[0];
     if (steal && pickDelta(steal) >= 10) {
       add(steal, 'Value pick', `Fell ${pickDelta(steal)} spots past the going rate at ${steal.pos}, worth ${fmt(steal.vor || 0)} over replacement.`);
     }
