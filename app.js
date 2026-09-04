@@ -227,8 +227,11 @@
     const body = rows.length
       ? `<div class="roster-list">${rows.map(p => {
           const mug = mugUrl(p.id, p.pos, p.team);
+          // Team logos are drawn for light backgrounds and several are mostly
+          // black, so they need their own treatment rather than a face crop.
+          const isLogo = G.normPos(p.pos) === 'DST';
           return `<div class="roster-player${p.starter ? ' is-starter' : ''}">
-            <span class="mug">${mug ? `<img src="${esc(mug)}" alt="" loading="lazy" decoding="async">` : ''}</span>
+            <span class="mug${isLogo ? ' is-logo' : ''}">${mug ? `<img src="${esc(mug)}" alt="" loading="lazy" decoding="async">` : ''}</span>
             <span class="pos-tag pos-${esc(p.pos || 'NA')}">${esc(p.pos || '--')}</span>
             <b>${esc(p.name)}</b>
             <small>${esc(p.team || 'FA')}${p.starter ? ' \u00b7 ST' : ''}${p.reserve ? ' \u00b7 IR' : ''}${p.taxi ? ' \u00b7 TX' : ''}</small>

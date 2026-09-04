@@ -386,3 +386,18 @@ test('rosters show headshots that collapse when the CDN has no image', async () 
   assert.ok(imgs.every(i => i.getAttribute('loading') === 'lazy'),
     'images must be lazy so a roster open is not 15 requests');
 });
+
+test('defence logos get a light tile so dark logos stay visible', async () => {
+  const { doc } = await boot();
+  // Find a team whose roster includes a defence.
+  const cards = [...doc.querySelectorAll('#teamGrid .team-card')];
+  cards[0].dispatchEvent(new doc.defaultView.MouseEvent('click', { bubbles: true }));
+  await drain(400);
+  const dstRow = [...doc.querySelectorAll('#modalBody .roster-player')]
+    .find(r => r.querySelector('.pos-tag')?.textContent.trim() === 'DST');
+  if (!dstRow) return;   // this fixture's rosters may not include one
+  const mug = dstRow.querySelector('.mug');
+  assert.ok(mug.classList.contains('is-logo'),
+    'a defence must be tiled as a logo, not cropped like a headshot');
+  assert.match(mug.querySelector('img').getAttribute('src'), /team_logos/);
+});

@@ -29,7 +29,10 @@
   --wr: #4dabf7;
   --te: #ffa94d;
   --k: #b197fc;
-  --dst: #8d99ae;
+  /* Magenta because it is the only wide gap left in the hue circle: 47deg from
+     K's violet and 48deg from QB's red. Slate grey read as dead against a dark
+     panel while the other five were vivid. */
+  --dst: #eb64e7;
 
   --tier-a: #79df43;
   --tier-b: #f2f4f6;
@@ -539,6 +542,10 @@ body.modal-open { overflow: hidden; }
   display: grid; place-items: center;
 }
 .mug img { width: 100%; height: 100%; object-fit: cover; object-position: top center; display: block; }
+/* Team logos, not faces: never crop them, and give them the light background
+   they were drawn against or the dark ones vanish entirely. */
+.mug.is-logo { background: #eef1f4; padding: 3px; }
+.mug.is-logo img { object-fit: contain; object-position: center; }
 .mug.empty { background: var(--ink2); }
 .mug.empty img { display: none; }
 .roster-player.is-starter .mug { border-color: rgba(121, 223, 67, .45); }
