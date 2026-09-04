@@ -146,7 +146,7 @@
   const sortStandings = arr =>
     [...arr].sort((a, b) => (b.wins - a.wins) || (a.losses - b.losses) || (b.pf - a.pf));
 
-  const CUT = () => (CFG.playoffs && CFG.playoffs.teamsPerLeague) || 4;
+  const CUT = () => playoffCfg().teamsPerLeague;
 
   function renderStandings(code) {
     const rows = sortStandings(state.teams.filter(t => t.code === code));
@@ -189,6 +189,18 @@
   }
 
   const POS_ORDER = ['QB', 'RB', 'WR', 'TE', 'K', 'DEF', 'DST'];
+
+  /* Sleeper serves headshots and team logos from an unauthenticated CDN. It is
+   * undocumented, so every image needs a fallback: the position tag already
+   * carries the information, so a missing face just collapses. */
+  function mugUrl(id, pos, team) {
+    const p = G.normPos(pos);
+    if (p === 'DST') {
+      const abbr = (team || id || '').toUpperCase();
+      return abbr ? `https://sleepercdn.com/images/team_logos/nfl/${abbr.toLowerCase()}.png` : null;
+    }
+    return id ? `https://sleepercdn.com/content/nfl/players/thumb/${id}.jpg` : null;
+  }
   async function openTeam(key) {
     const t = state.teams.find(x => x.key === key);
     if (!t) return;
@@ -197,7 +209,7 @@
     const rows = (t.players || []).map(id => {
       const p = playerMeta(id);
       return {
-        name: p.n, pos: p.p, team: p.t,
+        id, name: p.n, pos: p.p, team: p.t,
         starter: t.starters.includes(id), reserve: t.reserve.includes(id), taxi: t.taxi.includes(id)
       };
     }).sort((a, b) =>
@@ -213,13 +225,21 @@
       <div class="metric"><b class="tier-${g ? g.tier : 'b'}">${g ? g.letter : '\u2014'}</b><span>Draft grade</span></div>
     </div>`;
     const body = rows.length
-      ? `<div class="roster-list">${rows.map(p => `<div class="roster-player">
-          <span class="pos-tag pos-${esc(p.pos || 'NA')}">${esc(p.pos || '--')}</span>
-          <b>${esc(p.name)}</b>
-          <small>${esc(p.team || 'FA')}${p.starter ? ' \u00b7 ST' : ''}${p.reserve ? ' \u00b7 IR' : ''}${p.taxi ? ' \u00b7 TX' : ''}</small>
-        </div>`).join('')}</div>`
+      ? `<div class="roster-list">${rows.map(p => {
+          const mug = mugUrl(p.id, p.pos, p.team);
+          return `<div class="roster-player${p.starter ? ' is-starter' : ''}">
+            <span class="mug">${mug ? `<img src="${esc(mug)}" alt="" loading="lazy" decoding="async">` : ''}</span>
+            <span class="pos-tag pos-${esc(p.pos || 'NA')}">${esc(p.pos || '--')}</span>
+            <b>${esc(p.name)}</b>
+            <small>${esc(p.team || 'FA')}${p.starter ? ' \u00b7 ST' : ''}${p.reserve ? ' \u00b7 IR' : ''}${p.taxi ? ' \u00b7 TX' : ''}</small>
+          </div>`;
+        }).join('')}</div>`
       : emptyState('Nothing rostered yet', 'This fills in once the draft runs.');
     $('modalBody').innerHTML = head + body;
+    // The CDN is undocumented and not every player has an image.
+    $('modalBody').querySelectorAll('.mug img').forEach(img => {
+      img.addEventListener('error', () => img.closest('.mug').classList.add('empty'));
+    });
   }
 
   /** The ticker is the hero: live numbers, not a sentence nobody rereads. */
@@ -322,9 +342,15 @@
     return Math.max(0, Number(state.nfl.week || 1) - 1);
   }
 
+  /* Rankings blend what a roster projects with what it has actually done, on a
+   * sliding weight. In Week 1 projections are the only information there is; by
+   * Week 8 eight games of scoring says more than any projection. */
+  const RESULTS_FULL_WEIGHT_AT = 8;
+
   async function loadPowerRankings() {
+    await Promise.all([loadRos(), loadPlayerDir()]);
     const weeks = await loadCompletedWeeks(lastCompletedWeek());
-    if (!weeks.length) { renderDraftBasedPower(); return; }
+    if (!weeks.length) { renderRosPower(); return; }
 
     const byTeam = new Map(state.teams.map(t => [t.key, { team: t, scores: [], allWins: 0, allGames: 0 }]));
     const perWeek = new Map();
@@ -371,13 +397,47 @@
         + G.percentile(x.recent, recents) * W.recentForm
         + G.percentile(x.allPct, alls) * W.allPlay;
     });
-    metrics.sort((a, b) => b.score - a.score);
+    const played = Math.max(0, ...metrics.map(x => x.team.wins + x.team.losses + x.team.ties));
+    const resultsWeight = G.clamp(played / RESULTS_FULL_WEIGHT_AT, 0, 1);
+    const projections = metrics.map(x => {
+      const p = projectedWeekly(x.team);
+      x.projected = p ? p.points : null;
+      return x.projected;
+    }).filter(v => v !== null);
 
-    $('powerMethod').textContent = 'Points 40 / record 30 / last three 20 / all-play 10';
+    if (projections.length >= metrics.length * 0.75 && resultsWeight < 1) {
+      const median = [...projections].sort((x, y) => x - y)[Math.floor(projections.length / 2)];
+      metrics.forEach(x => {
+        const projPct = G.percentile(x.projected === null ? median : x.projected, projections);
+        x.score = x.score * resultsWeight + projPct * (1 - resultsWeight);
+      });
+      $('powerMethod').textContent =
+        `${Math.round(resultsWeight * 100)}% results, ${Math.round((1 - resultsWeight) * 100)}% projected roster`;
+    } else {
+      $('powerMethod').textContent = 'Points 40 / record 30 / last three 20 / all-play 10';
+    }
+    metrics.sort((a, b) => b.score - a.score);
     $('powerList').innerHTML = metrics.slice(0, 5).map((x, i) => `
       <div class="row power-row">
         <span class="rank">${i + 1}</span>
         <div><b>${esc(x.team.name)}</b><small>${x.team.wins}-${x.team.losses} \u00b7 ${fmt(x.team.pf)} PF</small></div>
+        <span class="pill ${x.team.code.toLowerCase()}">${x.team.code}</span>
+      </div>`).join('');
+  }
+
+  /** Before any games, rank on what the rosters project. */
+  function renderRosPower() {
+    if (!state.ros) { renderDraftBasedPower(); return; }
+    const rows = state.teams
+      .map(team => ({ team, proj: projectedWeekly(team) }))
+      .filter(x => x.proj);
+    if (rows.length < state.teams.length * 0.75) { renderDraftBasedPower(); return; }
+    rows.sort((a, b) => b.proj.points - a.proj.points);
+    $('powerMethod').textContent = `Projected weekly points, week ${state.ros.week}`;
+    $('powerList').innerHTML = rows.slice(0, 5).map((x, i) => `
+      <div class="row power-row">
+        <span class="rank">${i + 1}</span>
+        <div><b>${esc(x.team.name)}</b><small>${fmt(x.proj.points, 1)} projected points a week</small></div>
         <span class="pill ${x.team.code.toLowerCase()}">${x.team.code}</span>
       </div>`).join('');
   }
@@ -514,6 +574,45 @@
 
   /* --------------------------------------------------------- draft grades */
 
+  /* Rest-of-season data, refreshed weekly, deliberately a different file from
+   * the frozen draft snapshot. Absent until scripts/fetch-ros.mjs has run, so
+   * every consumer has to cope without it. */
+  let rosIndexCache = null;
+
+  async function loadRos() {
+    if (state.ros !== undefined) return state.ros;
+    try {
+      const data = await fetchJSON('data/fantasypros-ros.json', { timeout: 15000, retries: 1 });
+      state.ros = data && data.status === 'ready' && (data.players || []).length ? data : null;
+    } catch { state.ros = null; }
+    if (state.ros) rosIndexCache = G.buildIndex(state.ros.players);
+    return state.ros;
+  }
+
+  /** A roster's best legal lineup, in projected points for the coming week. */
+  function projectedWeekly(team) {
+    if (!state.ros || !rosIndexCache || !state.playerDir) return null;
+    const league = state.leagues[team.code];
+    if (!league) return null;
+    const code = G.scoringCode(league);
+    const slots = G.startingSlots(league);
+    const players = [];
+    for (const id of (team.players || [])) {
+      const meta = state.playerDir[id];
+      if (!meta) continue;
+      const fp = G.matchPlayer(
+        { player_id: id, metadata: { first_name: meta.n, last_name: '', position: meta.p } },
+        rosIndexCache);
+      const proj = fp ? G.projPoints(fp, code) : 0;
+      players.push({ pos: G.normPos(meta.p), proj, vor: proj });
+    }
+    if (!players.length) return null;
+    const matched = players.filter(p => p.proj > 0).length;
+    // A roster we could barely identify would rank low for the wrong reason.
+    if (matched < Math.ceil(players.length * 0.5)) return null;
+    return { points: G.optimalLineup(players, slots), matched, total: players.length };
+  }
+
   async function loadFantasyPros() {
     if (state.fp) return state.fp;
     try {
@@ -642,7 +741,7 @@
     $('draftRankList').querySelectorAll('[data-gradekey]')
       .forEach(el => el.addEventListener('click', () => openDraftReport(el.dataset.gradekey)));
     if (!(state.nfl && state.nfl.season_type === 'regular' && Number(state.nfl.week) > 1)) {
-      renderDraftBasedPower();
+      renderRosPower();
     }
     renderBoard();
   }
@@ -847,12 +946,30 @@
     }
     const late = [...skill].filter(p => p.overall > 60 && p.vor > 0).sort((a, b) => b.vor - a.vor)[0];
     if (late) add(late, 'Upside swing', `A later pick worth ${fmt(late.vor)} over replacement at ${late.pos}, which is where ceiling hides.`);
+    /* The panel's disagreement on draft day, frozen with the snapshot. A high
+     * rank_std means the experts could not agree, so taking that player early
+     * was a genuine call rather than following consensus. */
+    const bold = [...skill].filter(p => p.spread != null && p.spread >= 12)
+      .sort((a, b) => b.spread - a.spread)[0];
+    if (bold) {
+      const range = bold.rankMin != null && bold.rankMax != null
+        ? ` Rankings ranged from ${Math.round(bold.rankMin)} to ${Math.round(bold.rankMax)}.`
+        : '';
+      add(bold, 'Boldest call',
+        `The panel could not agree on him at all.${range} Taking him at ${bold.overall} was a real decision, not consensus-following.`);
+    }
+    const settled = [...skill].filter(p => p.spread != null && p.spread <= 4 && p.overall <= 60)
+      .sort((a, b) => a.spread - b.spread)[0];
+    if (settled) {
+      add(settled, 'Safest call',
+        `Nobody disagreed about him. A settled pick at ${settled.overall}, which is either discipline or a lack of imagination.`);
+    }
     const questionable = [...withAdp].filter(p => pickDelta(p) <= -12).sort((a, b) => pickDelta(a) - pickDelta(b))[1];
     if (questionable) add(questionable, 'Questionable', `Went ${Math.abs(pickDelta(questionable))} spots ahead of consensus. This one gets remembered either way.`);
     const efficient = [...skill].filter(p => p.overall > 80 && p.vor > 0)
       .sort((a, b) => b.vor - a.vor)[0];
     if (efficient) add(efficient, 'Late-round value', `${fmt(efficient.vor)} over replacement from pick ${efficient.overall}. Boring, and it wins weeks.`);
-    return out.slice(0, 3);
+    return out.slice(0, 4);
   }
 
   const GRADE_BANK = {
@@ -970,9 +1087,14 @@
 
   /* -------------------------------------------------------------- playoffs */
 
-  const playoffCfg = () => CFG.playoffs || {
-    qualifyThroughWeek: 14, teamsPerLeague: 4,
-    rounds: [{ week: 15, advance: 4 }, { week: 16, advance: 2 }, { week: 17, advance: 1 }]
+  const playoffCfg = () => {
+    const cfg = CFG.playoffs || {};
+    return {
+      qualifyThroughWeek: cfg.qualifyThroughWeek ?? 14,
+      teamsPerLeague: cfg.teamsPerLeague ?? 3,
+      wildcards: cfg.wildcards ?? 2,
+      rounds: cfg.rounds || [{ week: 15, advance: 4 }, { week: 16, advance: 2 }, { week: 17, advance: 1 }]
+    };
   };
   function currentWeek() {
     if (!state.nfl || state.nfl.season_type !== 'regular') return 0;
@@ -985,11 +1107,32 @@
    * through the playoff weeks, so reading live standings in Week 16 could
    * change who supposedly qualified in Week 14.
    */
+  /**
+   * Automatic spots by record within each league, then the highest scorers of
+   * everyone left over, pooled across both leagues.
+   *
+   * Points rather than record for the wildcards, because the playoff rounds
+   * themselves are decided purely on weekly score, and because a fourth
+   * record-based spot would put a twelve-team league and a ten-team league back
+   * into the same comparison.
+   */
+  function withWildcards(seedsByLeague, allTeams, wildcards) {
+    const seeded = seedsByLeague.flat();
+    const taken = new Set(seeded.map(t => t.key));
+    const pool = allTeams
+      .filter(t => !taken.has(t.key))
+      .sort((x, y) => (y.seedPf ?? y.pf) - (x.seedPf ?? x.pf))
+      .slice(0, Math.max(0, wildcards))
+      .map(t => ({ ...t, wildcard: true }));
+    return [...seeded, ...pool];
+  }
+
   async function frozenQualifiers() {
     const cfg = playoffCfg();
     if (!inPlayoffs()) {
-      return ['A', 'B'].flatMap(code =>
+      const seeds = ['A', 'B'].map(code =>
         sortStandings(state.teams.filter(t => t.code === code)).slice(0, cfg.teamsPerLeague));
+      return withWildcards(seeds, state.teams, cfg.wildcards);
     }
     if (state.frozenStandings) return state.frozenStandings;
     const weeks = { A: [], B: [] };
@@ -999,14 +1142,18 @@
       if (res.B) weeks.B.push(res.B);
       await sleep(40);
     }
-    const field = [];
+    const resolved = [];
+    const seeds = [];
     for (const code of ['A', 'B']) {
-      const table = G.standingsFromMatchups(weeks[code]).slice(0, cfg.teamsPerLeague);
-      for (const row of table) {
+      const rows = [];
+      for (const row of G.standingsFromMatchups(weeks[code])) {
         const t = teamFor(code, row.rosterId);
-        if (t) field.push({ ...t, seedWins: row.wins, seedLosses: row.losses, seedPf: row.pf });
+        if (t) rows.push({ ...t, seedWins: row.wins, seedLosses: row.losses, seedPf: row.pf });
       }
+      resolved.push(...rows);
+      seeds.push(rows.slice(0, cfg.teamsPerLeague));
     }
+    const field = withWildcards(seeds, resolved, cfg.wildcards);
     state.frozenStandings = field.length ? field : null;
     return state.frozenStandings || [];
   }
@@ -1071,9 +1218,10 @@
     const field = await frozenQualifiers();
     const keys = new Set(field.map(t => t.key));
     $('playoffPictureTitle').textContent = `${CFG.season} BDI playoff field`;
-    $('playoffPictureSub').textContent = `Seeded on the standings through Week ${cfg.qualifyThroughWeek}`;
+    $('playoffPictureSub').textContent =
+      `Top ${cfg.teamsPerLeague} per league plus ${cfg.wildcards} wildcards, through Week ${cfg.qualifyThroughWeek}`;
     $('playoffPicture').innerHTML = `<div class="qualified-chips">${field.map(t => `
-      <span><b>${esc(t.name)}</b><small>${t.code} · ${t.seedWins ?? t.wins}-${t.seedLosses ?? t.losses}</small></span>
+      <span class="${t.wildcard ? 'wild' : ''}"><b>${esc(t.name)}</b><small>${t.code} · ${t.seedWins ?? t.wins}-${t.seedLosses ?? t.losses}${t.wildcard ? ' · wildcard' : ''}</small></span>
     `).join('')}</div>`;
 
     try {

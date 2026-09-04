@@ -1,4 +1,4 @@
-# BDI Fantasy HQ — v0.7.0
+# BDI Fantasy HQ — v1.0.0
 
 A static GitHub Pages site that pulls BDI's two 10-team Sleeper redraft leagues
 into one place. No build step, no framework, no backend.
@@ -90,10 +90,18 @@ ranking, and which ones did not. Check it before you let anyone see the grades.
 
 ## Playoffs
 
-Configured in `config.js` rather than hardcoded. Top four from each league
-qualify on the standings **through Week 14**, rebuilt from weekly matchups
-rather than read live, because Sleeper keeps adding wins to roster settings
-during the playoff weeks. Week 15 cuts eight to four, Week 16 cuts four to two,
+Configured in `config.js` rather than hardcoded. Top three from each league
+qualify on the standings **through Week 14**, plus two wildcards: the highest
+scorers of everyone left over, pooled across both leagues.
+
+Points rather than record for the wildcards, for two reasons. The playoff rounds
+themselves are decided purely on weekly score, so scoring is the thing being
+selected for. And with leagues of different sizes, a fourth record-based spot
+would put a twelve-team league and a ten-team league back into the same
+comparison, which is what the wildcards exist to avoid.
+
+Standings are rebuilt from weekly matchups rather than read live, because
+Sleeper keeps adding wins to roster settings during the playoff weeks. Week 15 cuts eight to four, Week 16 cuts four to two,
 Week 17 decides it. No head-to-head — every round is one combined leaderboard.
 
 The site opens on the Playoffs tab from Week 15 and refreshes the live board
@@ -162,6 +170,37 @@ jsdom is a dev dependency only; the deployed site has none.
 Copy `index.html`, `styles.css`, `config.js`, `grade.js`, `app.js`,
 `bdi-logo.png` and `data/` to the root of the Pages repo. `scripts/`,
 `package.json` and `node_modules/` are not needed in production.
+
+## Power rankings
+
+Two things blended on a sliding weight: what a roster projects, and what it has
+actually done.
+
+Projected strength comes from `data/fantasypros-ros.json` — each team's current
+roster matched against rest-of-season consensus and run through that league's
+own starting slots, giving a projected weekly score. Results come from points,
+record, the last three weeks and all-play.
+
+In Week 1 projections are the only information there is. By Week 8 eight games
+of scoring says more than any projection, so results carry full weight. The
+panel states the split rather than hiding it. Picking one or the other gives
+either a preseason list that never moves, or a Week 2 list driven entirely by
+one lucky Sunday.
+
+A team whose roster cannot be resolved against the board — fewer than half its
+players matched — is skipped rather than ranked low for the wrong reason. With
+no rest-of-season file at all, rankings fall back to draft grades.
+
+`data/fantasypros-ros.json` is refreshed every Tuesday by
+`.github/workflows/weekly-ros.yml`, which needs no secrets because the fetch
+goes through the Cloudflare worker. That job fails if the frozen draft snapshot
+changed, on top of the fetch script's own refusal to write to it.
+
+## Player images
+
+Headshots and team logos come from Sleeper's image CDN, which is
+unauthenticated but undocumented and incomplete. Every image is lazy-loaded and
+collapses on error, because the position tag already carries the information.
 
 ## Design
 

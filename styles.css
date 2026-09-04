@@ -523,3 +523,27 @@ body.modal-open { overflow: hidden; }
 .room { display: inline-flex; align-items: baseline; gap: 6px; }
 .room b { font-weight: 800; letter-spacing: .03em; }
 .room-note { display: block; margin-top: 8px; color: var(--chalk3); font-size: .76rem; }
+
+/* Wildcards are in, but by a different route. */
+.playoff-team-row.wild { border-left-color: var(--te); }
+.playoff-team-row.wild .playoff-status { color: var(--te); }
+.qualified-chips span.wild { border-left-color: var(--te); }
+
+/* ------------------------------------------------------- player headshots */
+/* Sleeper's image CDN is undocumented and incomplete, so a missing face has
+   to collapse cleanly. The position tag already carries the information. */
+.roster-player { grid-template-columns: 34px 34px 1fr auto; }
+.mug {
+  width: 34px; height: 34px; border-radius: 3px; overflow: hidden;
+  background: var(--panel2); border: 1px solid var(--rule);
+  display: grid; place-items: center;
+}
+.mug img { width: 100%; height: 100%; object-fit: cover; object-position: top center; display: block; }
+.mug.empty { background: var(--ink2); }
+.mug.empty img { display: none; }
+.roster-player.is-starter .mug { border-color: rgba(121, 223, 67, .45); }
+@media (max-width: 760px) {
+  .roster-player { grid-template-columns: 30px 30px 1fr; }
+  .mug { width: 30px; height: 30px; }
+  .roster-player small { grid-column: 3; }
+}

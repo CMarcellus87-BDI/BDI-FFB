@@ -522,3 +522,35 @@ test('two leagues with different scoring are each graded on their own settings',
     `PPR receivers must project above standard ones: ${avg(aWr)} vs ${avg(bWr)}`);
   void wrProj;
 });
+
+test('consensus spread and tier reach the graded picks', () => {
+  // Captured before the drafts because rank_std is not recoverable later.
+  const fp = [
+    { name: 'Split Guy', position: 'RB', adp_ppr: 20, points_ppr: 200,
+      rank_std: 18, rank_min: 8, rank_max: 52, tier: 3 },
+    { name: 'Settled Guy', position: 'WR', adp_ppr: 21, points_ppr: 195,
+      rank_std: 2, rank_min: 20, rank_max: 24, tier: 3 }
+  ];
+  for (let i = 3; i <= 40; i++) {
+    fp.push({ name: `F${i}`, position: i % 2 ? 'RB' : 'WR', adp_ppr: i, points_ppr: 190 - i, rank_std: 6 });
+  }
+  const picks = [];
+  let no = 1;
+  const take = (name, position) => {
+    const parts = name.split(' ');
+    picks.push({ pick_no: no, round: Math.ceil(no / 2), roster_id: 1, draft_slot: 1,
+      metadata: { first_name: parts[0], last_name: parts.slice(1).join(' '), position } });
+    no++;
+  };
+  take('Split Guy', 'RB');
+  take('Settled Guy', 'WR');
+  const { grades } = G.buildGrades([{ code: 'A', league: LEAGUE, picks }], fp,
+    (code, rid) => ({ key: `${code}:${rid}`, code, name: `Team ${rid}` }), WEIGHTS);
+  const split = grades[0].players.find(p => p.name === 'Split Guy');
+  const settled = grades[0].players.find(p => p.name === 'Settled Guy');
+  assert.equal(split.spread, 18, 'rank_std should reach the pick');
+  assert.equal(split.rankMin, 8);
+  assert.equal(split.rankMax, 52);
+  assert.equal(split.tier, 3);
+  assert.ok(split.spread > settled.spread, 'the contested pick should read as more contested');
+});

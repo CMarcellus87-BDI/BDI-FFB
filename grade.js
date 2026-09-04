@@ -439,6 +439,12 @@
           round: num(p.round) || 0,
           proj, adp, ecr: ecrOf(fp, codeScoring),
           bye: fp && fp.bye != null ? num(fp.bye) : null,
+          /* How much the expert panel disagreed on draft day. Captured before
+           * the drafts precisely because it is not recoverable later. */
+          spread: fp ? num(fp.rank_std) : null,
+          rankMin: fp ? num(fp.rank_min) : null,
+          rankMax: fp ? num(fp.rank_max) : null,
+          tier: fp ? num(fp.tier) : null,
           vor: vorOf(proj, normPos((p.metadata && p.metadata.position) || (fp && fp.position)), levels)
         };
         row.slotValue = baseline && proj > 0 ? row.vor - baseline(num(p.pick_no) || 1) : null;

@@ -18,14 +18,30 @@ const LEAGUE = size => ({
   roster_positions: ['QB', 'RB', 'RB', 'WR', 'WR', 'TE', 'FLEX', 'K', 'DEF',
     'BN', 'BN', 'BN', 'BN', 'BN', 'BN']
 });
-const rosters = code => Array.from({ length: 10 }, (_, i) => ({
-  roster_id: i + 1, owner_id: `${code}u${i + 1}`,
-  settings: { wins: 10 - i, losses: i, fpts: 1500 - i * 40, fpts_decimal: 50, fpts_against: 1400 },
-  players: [`p${i}1`, `p${i}2`], starters: [`p${i}1`], reserve: [], taxi: []
-}));
+const rosters = (code, played = 10) => Array.from({ length: 10 }, (_, i) => {
+  // Games played tracks the week, so the results/projection blend is exercised.
+  const wins = Math.max(0, Math.min(played, 10 - i));
+  return {
+    roster_id: i + 1, owner_id: `${code}u${i + 1}`,
+    settings: { wins, losses: played - wins, fpts: 1500 - i * 40, fpts_decimal: 50, fpts_against: 1400 },
+    players: [`p${i}1`, `p${i}2`], starters: [`p${i}1`], reserve: [], taxi: []
+  };
+});
 const users = code => Array.from({ length: 10 }, (_, i) => ({
   user_id: `${code}u${i + 1}`, display_name: `${code} Manager ${i + 1}`, metadata: {}
 }));
+
+/* Rest-of-season board keyed on the same names the player directory returns,
+ * so roster strength can actually resolve a lineup. */
+const ROS_PLAYERS = [];
+for (let i = 0; i < 22; i++) {
+  for (let j = 1; j <= 2; j++) {
+    ROS_PLAYERS.push({
+      name: `Rostered ${i}-${j}`, position: j === 1 ? 'RB' : 'WR', team: 'KC',
+      points_ppr: 20 - i * 0.4 + j, rank_ppr: i * 2 + j, tier: 1
+    });
+  }
+}
 
 const FP_PLAYERS = [];
 for (let i = 1; i <= 200; i++) {
@@ -53,7 +69,7 @@ const picksFor = () => {
   return out;
 };
 
-function makeFetch({ week = 0, seasonType = 'pre', draftStatus = 'complete', snapshot = 'ready' } = {}) {
+function makeFetch({ week = 0, seasonType = 'pre', draftStatus = 'complete', snapshot = 'ready', ros = 'ready' } = {}) {
   const calls = [];
   return {
     calls,
@@ -64,13 +80,15 @@ function makeFetch({ week = 0, seasonType = 'pre', draftStatus = 'complete', sna
       if (u.includes('/state/nfl')) return json({ season_type: seasonType, week, season: '2026' });
       if (u.includes('/users')) return json(users(u.includes('1398722946876309504') ? 'A' : 'B'));
       if (/\/league\/\d+$/.test(u)) return json(LEAGUE(u.includes('1398722946876309504') ? 'A' : 'B'));
-      if (u.includes('/rosters')) return json(rosters(u.includes('1398722946876309504') ? 'A' : 'B'));
+      if (u.includes('/rosters')) return json(rosters(
+        u.includes('1398722946876309504') ? 'A' : 'B',
+        seasonType === 'regular' ? Math.max(0, week - 1) : 0));
       if (u.includes('/drafts')) return json([{ draft_id: 'd1', season: '2026', status: draftStatus }]);
       if (u.includes('/draft/')) return json(picksFor());
       if (u.includes('/players/nfl')) {
         const dir = {};
-        for (let i = 0; i < 10; i++) for (let j = 1; j <= 2; j++) {
-          dir[`p${i}${j}`] = { full_name: `Rostered ${i}-${j}`, position: 'RB', team: 'KC' };
+        for (let i = 0; i < 22; i++) for (let j = 1; j <= 2; j++) {
+          dir[`p${i}${j}`] = { full_name: `Rostered ${i}-${j}`, position: j === 1 ? 'RB' : 'WR', team: 'KC' };
         }
         dir.px = { full_name: 'Traded Guy', position: 'WR', team: 'BUF' };
         return json(dir);
@@ -86,6 +104,10 @@ function makeFetch({ week = 0, seasonType = 'pre', draftStatus = 'complete', sna
         return json(Array.from({ length: 10 }, (_, i) => ({
           roster_id: i + 1, matchup_id: Math.floor(i / 2) + 1, points: 90 + ((i * 7 + w * 3) % 45)
         })));
+      }
+      if (u.includes('fantasypros-ros.json')) {
+        if (ros === 'missing') return { ok: false, status: 404, json: async () => ({}) };
+        return json({ season: 2026, week: 1, status: 'ready', players: ROS_PLAYERS });
       }
       if (u.includes('fantasypros-2026.json')) {
         return json(snapshot === 'ready'
@@ -137,15 +159,20 @@ test('boots clean and fills both standings tables', async () => {
   assert.equal(doc.querySelectorAll('#standingsA tr').length, 10);
   assert.equal(doc.querySelectorAll('#standingsB tr').length, 10);
   assert.equal(text(doc, 'joinedStat'), '20/20');
-  assert.notEqual(text(doc, 'leaderA'), '\u2014', 'the ticker should name a league A leader');
+  // Preseason: no games played, so the ticker should say so rather than
+  // crowning whoever happens to sort first.
+  assert.equal(text(doc, 'leaderA'), '\u2014');
+  assert.match(text(doc, 'leaderASub'), /No games played|Waiting/);
   assert.equal(doc.querySelectorAll('#teamGrid .team-card').length, 20);
 });
 
-test('the playoff cut line is drawn after the fourth team', async () => {
+test('the standings cut line marks the automatic playoff spots', async () => {
   const { doc } = await boot();
   const rows = [...doc.querySelectorAll('#standingsA tr')];
-  assert.equal(rows.filter(r => r.classList.contains('in-hunt')).length, 4);
-  assert.ok(rows[3].classList.contains('cutline'));
+  // Three automatic spots per league; the other two places float as wildcards
+  // and are shown on the Playoffs tab rather than in the standings.
+  assert.equal(rows.filter(r => r.classList.contains('in-hunt')).length, 3);
+  assert.ok(rows[2].classList.contains('cutline'));
 });
 
 test('grades publish for all twenty teams and spread across letters', async () => {
@@ -213,13 +240,17 @@ test('transactions show player names, never raw Sleeper IDs', async () => {
 });
 
 test('power rankings compute once weeks are complete', async () => {
-  const { doc } = await boot({ seasonType: 'regular', week: 5 });
+  // Week 10 means nine games played, so results carry full weight and the
+  // underlying results formula is what gets reported.
+  const { doc } = await boot({ seasonType: 'regular', week: 10 });
   assert.equal(doc.querySelectorAll('#powerList .power-row').length, 5);
   assert.match(text(doc, 'powerMethod'), /all-play/);
+  assert.notEqual(text(doc, 'leaderA'), '\u2014', 'a leader is named once games are played');
 });
 
 test('preseason falls back to draft-grade ordering instead of an empty panel', async () => {
-  const { doc } = await boot();
+  // Only when there is no rest-of-season file; otherwise projections win.
+  const { doc } = await boot({ ros: 'missing' });
   assert.equal(doc.querySelectorAll('#powerList .power-row').length, 5);
   assert.match(text(doc, 'powerMethod'), /draft grade/i);
 });
@@ -247,7 +278,10 @@ test('the playoff view opens itself in week 15 and shows a cut line', async () =
   assert.equal(rows.length, 8, 'eight qualifiers should be listed');
   assert.equal(doc.querySelectorAll('#playoffLiveBoard .survivor-row.advancing').length, 4);
   assert.ok(doc.querySelector('#playoffLiveBoard .cut-line'));
-  assert.equal(doc.querySelectorAll('#playoffPicture .qualified-chips span').length, 8);
+  const chips = doc.querySelectorAll('#playoffPicture .qualified-chips span');
+  assert.equal(chips.length, 8, 'three per league plus two wildcards');
+  assert.equal([...chips].filter(c => c.classList.contains('wild')).length, 2,
+    'exactly two teams should be flagged as wildcards');
 });
 
 test('week 16 narrows the field to four', async () => {
@@ -305,4 +339,36 @@ test('the player directory is downloaded once, not per roster open', async () =>
 
   const dirCalls = calls.filter(u => u.includes('/players/nfl')).length;
   assert.equal(dirCalls, 1, `player directory fetched ${dirCalls} times`);
+});
+
+test('before any games the rankings use projected roster strength', async () => {
+  const { doc } = await boot();
+  assert.equal(doc.querySelectorAll('#powerList .power-row').length, 5);
+  assert.match(text(doc, 'powerMethod'), /projected/i,
+    'preseason should say it is ranking on projections');
+  assert.match(doc.getElementById('powerList').textContent, /projected points a week/);
+});
+
+test('once games are played the method line states the blend', async () => {
+  const { doc } = await boot({ seasonType: 'regular', week: 4 });
+  assert.equal(doc.querySelectorAll('#powerList .power-row').length, 5);
+  assert.match(text(doc, 'powerMethod'), /% results, \d+% projected roster/,
+    `expected a blend, got "${text(doc, 'powerMethod')}"`);
+});
+
+test('rosters show headshots that collapse when the CDN has no image', async () => {
+  const { doc } = await boot();
+  doc.querySelector('#teamGrid .team-card').dispatchEvent(
+    new doc.defaultView.MouseEvent('click', { bubbles: true }));
+  await drain(400);
+  const players = doc.querySelectorAll('#modalBody .roster-player');
+  assert.ok(players.length >= 2, 'roster should list players');
+  const mugs = doc.querySelectorAll('#modalBody .mug');
+  assert.equal(mugs.length, players.length, 'every player gets an image slot');
+  const imgs = [...doc.querySelectorAll('#modalBody .mug img')];
+  assert.ok(imgs.length, 'images should be requested');
+  assert.ok(imgs.every(i => i.getAttribute('src').startsWith('https://sleepercdn.com/')),
+    'headshots must come from Sleeper\'s CDN');
+  assert.ok(imgs.every(i => i.getAttribute('loading') === 'lazy'),
+    'images must be lazy so a roster open is not 15 requests');
 });

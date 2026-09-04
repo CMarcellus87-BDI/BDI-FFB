@@ -41,9 +41,15 @@ window.BDI_FANTASY_CONFIG = {
 
   // Change the format here rather than in the code. `advance` is how many
   // teams survive that week; the last round's 1 is the champion.
+  // Top `teamsPerLeague` from each league qualify on record, then `wildcards`
+  // more from everyone left, taken on total points scored across both leagues.
+  // Points rather than record because the playoff rounds themselves are decided
+  // purely on weekly score, and because a fourth record-based spot would put
+  // League A's twelve teams and League B's ten back into the same comparison.
   playoffs: {
     qualifyThroughWeek: 14,
-    teamsPerLeague: 4,
+    teamsPerLeague: 3,
+    wildcards: 2,
     rounds: [
       { week: 15, advance: 4 },
       { week: 16, advance: 2 },

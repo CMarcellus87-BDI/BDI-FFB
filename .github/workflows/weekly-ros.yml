@@ -1,0 +1,55 @@
+# Refresh the rest-of-season data every Tuesday morning.
+#
+# Needs no secrets: the fetch goes through the Cloudflare worker, which holds
+# the FantasyPros key. Node sends no Origin header, so the worker's CORS
+# allowlist does not apply.
+#
+# This job only ever writes data/fantasypros-ros.json. The draft snapshot,
+# data/fantasypros-2026.json, is frozen and the script refuses to touch it.
+name: Weekly rest-of-season refresh
+
+on:
+  schedule:
+    # 11:00 UTC Tuesday, after Monday night football has settled.
+    - cron: '0 11 * * 2'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: weekly-ros
+  cancel-in-progress: false
+
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Fetch rest-of-season data
+        run: node scripts/fetch-ros.mjs
+
+      - name: Fail if the frozen draft snapshot changed
+        run: |
+          if ! git diff --quiet -- data/fantasypros-2026.json; then
+            echo "The draft snapshot was modified. Refusing to commit."
+            git diff --stat -- data/fantasypros-2026.json
+            exit 1
+          fi
+
+      - name: Commit if anything changed
+        run: |
+          if git diff --quiet -- data/fantasypros-ros.json; then
+            echo "No change this week."
+            exit 0
+          fi
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add data/fantasypros-ros.json
+          git commit -m "Weekly rest-of-season refresh"
+          git push
