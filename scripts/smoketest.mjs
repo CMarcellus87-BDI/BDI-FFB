@@ -401,3 +401,23 @@ test('defence logos get a light tile so dark logos stay visible', async () => {
     'a defence must be tiled as a logo, not cropped like a headshot');
   assert.match(mug.querySelector('img').getAttribute('src'), /team_logos/);
 });
+
+test('every position chip gets a colour, including defences', async () => {
+  const { doc, w } = await boot();
+  doc.querySelector('#teamGrid .team-card').dispatchEvent(
+    new w.MouseEvent('click', { bubbles: true }));
+  await drain(400);
+  const tags = [...doc.querySelectorAll('#modalBody .pos-tag')];
+  assert.ok(tags.length, 'roster should render position chips');
+  // Sleeper reports DEF; everything else in the app says DST. The class must
+  // be one the stylesheet actually defines, or the chip renders unstyled.
+  const known = ['QB', 'RB', 'WR', 'TE', 'K', 'DST', 'DEF', 'NA'];
+  for (const tag of tags) {
+    const cls = [...tag.classList].find(c => c.startsWith('pos-') && c !== 'pos-tag');
+    assert.ok(cls, `chip "${tag.textContent}" has no position class`);
+    assert.ok(known.includes(cls.slice(4)),
+      `chip class ${cls} is not one the stylesheet defines`);
+  }
+  const labels = tags.map(t2 => t2.textContent.trim());
+  assert.ok(!labels.includes('DEF'), `defences should be labelled DST, got ${labels.join(',')}`);
+});

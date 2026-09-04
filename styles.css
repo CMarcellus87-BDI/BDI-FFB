@@ -204,13 +204,21 @@ h1, h2, h3, h4, .display {
 .pill.b { border-color: rgba(77, 171, 247, .45); color: var(--wr); }
 .pill.live { border-color: var(--live); color: var(--live); }
 
-.pos-tag { width: 34px; padding: 2px 0; font-size: .76rem; color: var(--ink); }
-.pos-QB { background: var(--qb); } .pos-RB { background: var(--rb); }
-.pos-WR { background: var(--wr); } .pos-TE { background: var(--te); }
-.pos-K  { background: var(--k); }  .pos-DST { background: var(--dst); }
-.pos-tag:not([class*="pos-Q"]):not([class*="pos-R"]):not([class*="pos-W"]):not([class*="pos-T"]):not([class*="pos-K"]):not([class*="pos-D"]) {
+/* Default first, then override per position. The previous version used a chain
+   of :not() selectors as the fallback, which silently gave `pos-DEF` no
+   background at all: Sleeper reports defences as DEF while the rest of the app
+   normalises to DST. A plain default cannot fail that way. */
+.pos-tag {
+  width: 34px; padding: 2px 0; font-size: .76rem;
   background: var(--rule); color: var(--chalk2);
 }
+.pos-QB  { background: var(--qb);  color: var(--ink); }
+.pos-RB  { background: var(--rb);  color: var(--ink); }
+.pos-WR  { background: var(--wr);  color: var(--ink); }
+.pos-TE  { background: var(--te);  color: var(--ink); }
+.pos-K   { background: var(--k);   color: var(--ink); }
+.pos-DST { background: var(--dst); color: var(--ink); }
+.pos-DEF { background: var(--dst); color: var(--ink); }
 
 .grade-chip { padding: 2px 8px; font-size: .85rem; border: 1px solid currentColor; }
 .tier-a { color: var(--tier-a); } .tier-b { color: var(--tier-b); }

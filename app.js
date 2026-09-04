@@ -209,7 +209,9 @@
     const rows = (t.players || []).map(id => {
       const p = playerMeta(id);
       return {
-        id, name: p.n, pos: p.p, team: p.t,
+        // Normalised, so the chip class and the label match the rest of the
+        // app. Sleeper says DEF; the board legend and grades say DST.
+        id, name: p.n, pos: G.normPos(p.p), team: p.t,
         starter: t.starters.includes(id), reserve: t.reserve.includes(id), taxi: t.taxi.includes(id)
       };
     }).sort((a, b) =>
