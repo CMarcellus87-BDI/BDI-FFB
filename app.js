@@ -1188,7 +1188,8 @@
   }
 
   function renderRegularPlayoffPicture() {
-    const cut = playoffCfg().teamsPerLeague;
+    const cfg = playoffCfg();
+    const cut = cfg.teamsPerLeague;
     const block = (code, rows) => `<div class="playoff-league">
       <div class="playoff-league-head"><b>League ${code}</b><span>Top ${cut} qualify</span></div>
       ${rows.map((t, i) => `<div class="playoff-team-row ${i < cut ? 'in' : 'bubble'}">
@@ -1205,7 +1206,8 @@
       ${block('B', sortStandings(state.teams.filter(t => t.code === 'B')))}</div>`;
     $('playoffLiveTitle').textContent = 'Road to the championship';
     $('playoffLiveSub').textContent = 'Live scoring starts in Week 15';
-    $('playoffLiveBadge').textContent = `Weeks ${playoffCfg().rounds[0].week}\u2013${playoffCfg().rounds[playoffCfg().rounds.length - 1].week}`;
+    $('playoffLiveBadge').textContent =
+      `Weeks ${cfg.rounds[0].week}\u2013${cfg.rounds[cfg.rounds.length - 1].week}`;
     $('playoffLiveBoard').innerHTML = emptyState('Not yet',
       'This becomes the live cut-line leaderboard when the playoffs begin.');
   }

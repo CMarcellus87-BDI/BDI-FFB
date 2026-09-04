@@ -421,3 +421,32 @@ test('every position chip gets a colour, including defences', async () => {
   const labels = tags.map(t2 => t2.textContent.trim());
   assert.ok(!labels.includes('DEF'), `defences should be labelled DST, got ${labels.join(',')}`);
 });
+
+test('the playoffs tab renders the field during the regular season', async () => {
+  // This path was never exercised: the other playoff tests all jump to week 15
+  // and take the frozen-standings branch, so a ReferenceError in the
+  // regular-season branch left the panel on "Loading" undetected.
+  const { doc, w } = await boot({ seasonType: 'regular', week: 4 });
+  doc.querySelector('.nav button[data-view="playoffs"]').dispatchEvent(
+    new w.MouseEvent('click', { bubbles: true }));
+  await drain(600);
+
+  const picture = doc.getElementById('playoffPicture');
+  assert.doesNotMatch(picture.textContent, /Loading/i,
+    'the playoff picture must render, not sit on a placeholder');
+  const rows = picture.querySelectorAll('.playoff-team-row');
+  assert.equal(rows.length, 20, 'every team should appear in the picture');
+  const perLeague = w.BDI_FANTASY_CONFIG.playoffs.teamsPerLeague;
+  assert.equal(picture.querySelectorAll('.playoff-team-row.in').length, perLeague * 2,
+    'the qualifying count must match config');
+  assert.equal(doc.querySelectorAll('#playoffPicture .playoff-league').length, 2);
+});
+
+test('the playoffs tab also renders in the preseason', async () => {
+  const { doc, w } = await boot();
+  doc.querySelector('.nav button[data-view="playoffs"]').dispatchEvent(
+    new w.MouseEvent('click', { bubbles: true }));
+  await drain(600);
+  assert.doesNotMatch(doc.getElementById('playoffPicture').textContent, /Loading/i);
+  assert.equal(doc.querySelectorAll('#playoffPicture .playoff-team-row').length, 20);
+});
