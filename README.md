@@ -90,15 +90,15 @@ ranking, and which ones did not. Check it before you let anyone see the grades.
 
 ## Playoffs
 
-Configured in `config.js` rather than hardcoded. Top three from each league
-qualify on the standings **through Week 14**, plus two wildcards: the highest
-scorers of everyone left over, pooled across both leagues.
+Configured in `config.js` rather than hardcoded. Top four from each league
+qualify on the standings **through Week 14**. Setting `wildcards` above 0 adds
+that many floating spots taken on points scored across both leagues, which is
+worth doing if the leagues are ever different sizes.
 
-Points rather than record for the wildcards, for two reasons. The playoff rounds
-themselves are decided purely on weekly score, so scoring is the thing being
-selected for. And with leagues of different sizes, a fourth record-based spot
-would put a twelve-team league and a ten-team league back into the same
-comparison, which is what the wildcards exist to avoid.
+Every statement of the format on the page is generated from that config at
+runtime — the rules panel, the playoff picture subtitle, the seat count. They
+were hardcoded once, config and copy drifted apart, and the page contradicted
+itself. The tests read the config too, for the same reason.
 
 Standings are rebuilt from weekly matchups rather than read live, because
 Sleeper keeps adding wins to roster settings during the playoff weeks. Week 15 cuts eight to four, Week 16 cuts four to two,

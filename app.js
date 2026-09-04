@@ -277,6 +277,7 @@
       buildTeams();
       renderStandings('A'); renderStandings('B'); renderTeams();
       renderTicker();
+      applyPlayoffCopy();
       $('statusText').textContent = 'Sleeper connected';
       $('statusSub').textContent = `${la.name || 'League A'} + ${lb.name || 'League B'}`;
       $('app').classList.remove('booting');
@@ -1087,6 +1088,29 @@
 
   /* -------------------------------------------------------------- playoffs */
 
+  /* The format is stated in several places on the page. Deriving every one of
+   * them from config is the only way they cannot contradict each other, which
+   * is exactly what went wrong when the copy was hardcoded: config said three
+   * plus two wildcards while the markup still said top four. */
+  function applyPlayoffCopy() {
+    const cfg = playoffCfg();
+    const seats = cfg.teamsPerLeague * 2 + cfg.wildcards;
+    const set = (id, text) => { const el = $(id); if (el) el.textContent = text; };
+    const wild = cfg.wildcards > 0;
+    set('qualifyingRule',
+      `Top ${cfg.teamsPerLeague} in each league on the standings through Week ${cfg.qualifyThroughWeek}`
+      + (wild ? `, plus the ${cfg.wildcards} highest-scoring teams left over from either league.` : '.'));
+    set('playoffPictureSub', wild
+      ? `Top ${cfg.teamsPerLeague} per league plus ${cfg.wildcards} wildcards`
+      : `Top ${cfg.teamsPerLeague} in each league qualify`);
+    set('playoffHeroLine', (wild
+      ? `The top ${cfg.teamsPerLeague} from each league qualify, plus ${cfg.wildcards} wildcards on points scored. `
+      : `The top ${cfg.teamsPerLeague} from each league qualify. `)
+      + 'There are no head-to-head playoff matchups \u2014 every round is one combined scoring '
+      + 'leaderboard across both leagues.');
+    set('playoffSeats', `${seats} teams, three weeks, highest scores survive.`);
+  }
+
   const playoffCfg = () => {
     const cfg = CFG.playoffs || {};
     return {
@@ -1168,7 +1192,9 @@
         <span class="playoff-status">${i < cut ? 'In' : 'Out'}</span>
       </div>`).join('')}</div>`;
     $('playoffPictureTitle').textContent = 'Where the field stands';
-    $('playoffPictureSub').textContent = `Top ${cut} in each league qualify`;
+    $('playoffPictureSub').textContent = cfg.wildcards > 0
+      ? `Top ${cut} in each league, plus ${cfg.wildcards} on points`
+      : `Top ${cut} in each league qualify`;
     $('playoffPicture').innerHTML = `<div class="playoff-picture-grid">
       ${block('A', sortStandings(state.teams.filter(t => t.code === 'A')))}
       ${block('B', sortStandings(state.teams.filter(t => t.code === 'B')))}</div>`;
@@ -1218,8 +1244,9 @@
     const field = await frozenQualifiers();
     const keys = new Set(field.map(t => t.key));
     $('playoffPictureTitle').textContent = `${CFG.season} BDI playoff field`;
-    $('playoffPictureSub').textContent =
-      `Top ${cfg.teamsPerLeague} per league plus ${cfg.wildcards} wildcards, through Week ${cfg.qualifyThroughWeek}`;
+    $('playoffPictureSub').textContent = cfg.wildcards > 0
+      ? `Top ${cfg.teamsPerLeague} per league plus ${cfg.wildcards} wildcards, through Week ${cfg.qualifyThroughWeek}`
+      : `Seeded on the standings through Week ${cfg.qualifyThroughWeek}`;
     $('playoffPicture').innerHTML = `<div class="qualified-chips">${field.map(t => `
       <span class="${t.wildcard ? 'wild' : ''}"><b>${esc(t.name)}</b><small>${t.code} · ${t.seedWins ?? t.wins}-${t.seedLosses ?? t.losses}${t.wildcard ? ' · wildcard' : ''}</small></span>
     `).join('')}</div>`;

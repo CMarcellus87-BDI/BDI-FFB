@@ -166,13 +166,26 @@ test('boots clean and fills both standings tables', async () => {
   assert.equal(doc.querySelectorAll('#teamGrid .team-card').length, 20);
 });
 
-test('the standings cut line marks the automatic playoff spots', async () => {
-  const { doc } = await boot();
+test('the standings cut line matches the configured playoff spots', async () => {
+  const { doc, w } = await boot();
+  const perLeague = w.BDI_FANTASY_CONFIG.playoffs.teamsPerLeague;
   const rows = [...doc.querySelectorAll('#standingsA tr')];
-  // Three automatic spots per league; the other two places float as wildcards
-  // and are shown on the Playoffs tab rather than in the standings.
-  assert.equal(rows.filter(r => r.classList.contains('in-hunt')).length, 3);
-  assert.ok(rows[2].classList.contains('cutline'));
+  // Read from config rather than hardcoded, so changing the format cannot
+  // leave the page and the test disagreeing.
+  assert.equal(rows.filter(r => r.classList.contains('in-hunt')).length, perLeague);
+  assert.ok(rows[perLeague - 1].classList.contains('cutline'));
+});
+
+test('the stated qualifying rule matches the configured format', async () => {
+  const { doc, w } = await boot();
+  const cfg = w.BDI_FANTASY_CONFIG.playoffs;
+  const stated = text(doc, 'qualifyingRule');
+  assert.match(stated, new RegExp(`Top ${cfg.teamsPerLeague} in each league`),
+    `rules text should state the configured count, got "${stated}"`);
+  assert.match(stated, new RegExp(`Week ${cfg.qualifyThroughWeek}`));
+  if (cfg.wildcards > 0) assert.match(stated, /wildcard|left over/i);
+  else assert.doesNotMatch(stated, /wildcard|left over/i,
+    'must not promise wildcards when none are configured');
 });
 
 test('grades publish for all twenty teams and spread across letters', async () => {
@@ -271,7 +284,7 @@ test('an unfinished draft waits rather than publishing half a grade', async () =
 });
 
 test('the playoff view opens itself in week 15 and shows a cut line', async () => {
-  const { doc } = await boot({ seasonType: 'regular', week: 15 });
+  const { doc, w } = await boot({ seasonType: 'regular', week: 15 });
   assert.ok(doc.getElementById('view-playoffs').classList.contains('active'),
     'week 15 should land on the playoffs tab');
   const rows = doc.querySelectorAll('#playoffLiveBoard .survivor-row');
@@ -279,9 +292,10 @@ test('the playoff view opens itself in week 15 and shows a cut line', async () =
   assert.equal(doc.querySelectorAll('#playoffLiveBoard .survivor-row.advancing').length, 4);
   assert.ok(doc.querySelector('#playoffLiveBoard .cut-line'));
   const chips = doc.querySelectorAll('#playoffPicture .qualified-chips span');
-  assert.equal(chips.length, 8, 'three per league plus two wildcards');
-  assert.equal([...chips].filter(c => c.classList.contains('wild')).length, 2,
-    'exactly two teams should be flagged as wildcards');
+  const cfg = w.BDI_FANTASY_CONFIG.playoffs;
+  assert.equal(chips.length, cfg.teamsPerLeague * 2 + cfg.wildcards);
+  assert.equal([...chips].filter(c => c.classList.contains('wild')).length, cfg.wildcards,
+    'wildcard flags must match the configured count');
 });
 
 test('week 16 narrows the field to four', async () => {
