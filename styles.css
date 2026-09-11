@@ -562,3 +562,27 @@ body.modal-open { overflow: hidden; }
   .mug { width: 30px; height: 30px; }
   .roster-player small { grid-column: 3; }
 }
+
+/* ------------------------------------------------------- live scoreboard */
+/* Separate from the standings on purpose: an in-progress score is not a
+   season total, and blending the two would misrepresent both. */
+.live-game {
+  display: grid; grid-template-columns: 34px 1fr 22px 1fr; align-items: center; gap: 10px;
+  padding: 11px 14px; border-bottom: 1px solid var(--rule-soft);
+}
+.live-game:last-child { border-bottom: 0; }
+.live-side { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; min-width: 0; }
+.live-side b { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.live-side strong {
+  font-family: var(--display); font-size: 1.25rem; font-weight: 800;
+  font-variant-numeric: tabular-nums; color: var(--chalk2);
+}
+.live-side.leading strong { color: var(--bdi); }
+.live-side.trailing { opacity: .62; }
+.live-v { font-family: var(--display); font-size: .8rem; color: var(--chalk3); text-align: center; }
+.pill.live { border-color: var(--live); color: var(--live); }
+@media (max-width: 760px) {
+  .live-game { grid-template-columns: 28px 1fr; row-gap: 4px; }
+  .live-v { display: none; }
+  .live-side { grid-column: 2; }
+}

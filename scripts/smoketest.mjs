@@ -450,3 +450,31 @@ test('the playoffs tab also renders in the preseason', async () => {
   assert.doesNotMatch(doc.getElementById('playoffPicture').textContent, /Loading/i);
   assert.equal(doc.querySelectorAll('#playoffPicture .playoff-team-row').length, 20);
 });
+
+test('the live scoreboard shows in-progress scores during the week', async () => {
+  // Roster settings only carry the last finalised week, so this reads the
+  // matchups endpoint, which updates while games are being played.
+  const { doc } = await boot({ seasonType: 'regular', week: 3 });
+  const panel = doc.getElementById('livePanel');
+  assert.equal(panel.hidden, false, 'the live panel should be visible in season');
+  const games = doc.querySelectorAll('#liveBoard .live-game');
+  assert.equal(games.length, 10, 'five matchups per league');
+  assert.equal(doc.querySelectorAll('#liveBoard .live-side').length, 20);
+  assert.ok(doc.querySelectorAll('#liveBoard .live-side.leading').length > 0,
+    'a leader should be marked in each game');
+  assert.match(text(doc, 'liveTitle'), /Week 3/);
+});
+
+test('the live scoreboard stays hidden in the preseason', async () => {
+  const { doc } = await boot();
+  assert.equal(doc.getElementById('livePanel').hidden, true,
+    'nothing is live before the season starts');
+});
+
+test('standings still show finalised totals, not live ones', async () => {
+  const { doc } = await boot({ seasonType: 'regular', week: 3 });
+  // The standings read roster settings; the live board reads matchups. They
+  // are different numbers on purpose and must not be conflated.
+  const firstPf = doc.querySelector('#standingsA tr .n').textContent.trim();
+  assert.match(firstPf, /^[\d,]+\.\d$/, `expected a season total, got "${firstPf}"`);
+});

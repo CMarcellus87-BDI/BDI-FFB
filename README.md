@@ -196,6 +196,20 @@ no rest-of-season file at all, rankings fall back to draft grades.
 goes through the Cloudflare worker. That job fails if the frozen draft snapshot
 changed, on top of the fetch script's own refusal to write to it.
 
+## Live scoring
+
+Roster `settings.fpts` only carries the last finalised week, which is why the
+standings look frozen mid-Sunday. `/league/{id}/matchups/{week}` updates while
+games are in progress, so the Week panel on the home page reads that instead.
+
+The two are kept apart deliberately. Standings show finalised season totals;
+the live board shows an in-progress week. Folding a partial score into a
+cumulative total would misrepresent both.
+
+The board refreshes every 90 seconds while the home tab is open and visible,
+and the same timer drives the playoff board from Week 15. It stops when the
+tab is hidden.
+
 ## Player images
 
 Headshots and team logos come from Sleeper's image CDN, which is

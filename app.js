@@ -292,7 +292,7 @@
       await loadDraftData();
       renderTeams();
       renderTicker();
-      await Promise.allSettled([loadPowerRankings(), loadHomeActivity()]);
+      await Promise.allSettled([loadPowerRankings(), loadHomeActivity(), renderLive()]);
 
       routeFromHash();
       scheduleRefresh();
@@ -1214,6 +1214,7 @@
 
   async function scoresForWeek(week) {
     const res = await matchupsForWeek(week);
+    state.liveMatchups = res;
     const rows = [];
     for (const code of ['A', 'B']) {
       if (!res[code]) continue;
@@ -1306,6 +1307,78 @@
     if (lastFocus && lastFocus.focus) lastFocus.focus();
   }
 
+  /* ------------------------------------------------------- live scoreboard
+   *
+   * Roster settings only carry last finalised week's totals, which is why the
+   * standings look frozen mid-Sunday. The matchups endpoint updates during
+   * games, so this reads that for the current week. Kept separate from the
+   * standings on purpose: mixing an in-progress score into a cumulative
+   * season total would be wrong in both directions.
+   */
+  function liveWeek() {
+    if (!state.nfl || state.nfl.season_type !== 'regular') return 0;
+    return Number(state.nfl.week || 0);
+  }
+
+  async function renderLive() {
+    const week = liveWeek();
+    const panel = $('livePanel');
+    if (!week) { panel.hidden = true; return; }
+
+    let rows;
+    try {
+      rows = await scoresForWeek(week);
+    } catch { panel.hidden = true; return; }
+    if (!rows.length) { panel.hidden = true; return; }
+
+    const byKey = new Map(rows.map(r => [r.team.key, r.score]));
+    const games = [];
+    for (const code of ['A', 'B']) {
+      const res = state.liveMatchups && state.liveMatchups[code];
+      if (!res) continue;
+      const pairs = new Map();
+      for (const m of res) {
+        if (m.matchup_id === null || m.matchup_id === undefined) continue;
+        const team = teamFor(code, m.roster_id);
+        if (!team) continue;
+        const arr = pairs.get(m.matchup_id) || [];
+        arr.push(team);
+        pairs.set(m.matchup_id, arr);
+      }
+      for (const pair of pairs.values()) {
+        if (pair.length !== 2) continue;
+        games.push({
+          code,
+          a: { team: pair[0], score: byKey.get(pair[0].key) || 0 },
+          b: { team: pair[1], score: byKey.get(pair[1].key) || 0 }
+        });
+      }
+    }
+    if (!games.length) { panel.hidden = true; return; }
+
+    const anyScores = games.some(g => g.a.score > 0 || g.b.score > 0);
+    $('liveBadge').textContent = anyScores ? 'Live' : `Week ${week}`;
+    $('liveBadge').className = anyScores ? 'pill live' : 'pill';
+    $('liveTitle').textContent = `Week ${week}`;
+    $('liveSub').textContent = anyScores
+      ? 'Updates while games are in progress'
+      : 'Nothing has kicked off yet';
+
+    panel.hidden = false;
+    $('liveBoard').innerHTML = games.map(g => {
+      const lead = g.a.score === g.b.score ? null : (g.a.score > g.b.score ? 'a' : 'b');
+      const side = (s, which) => `
+        <div class="live-side ${lead === which ? 'leading' : lead ? 'trailing' : ''}">
+          <b>${esc(s.team.name)}</b>
+          <strong>${fmt(s.score, 2)}</strong>
+        </div>`;
+      return `<div class="live-game">
+        <span class="pill ${g.code.toLowerCase()}">${g.code}</span>
+        ${side(g.a, 'a')}<span class="live-v">v</span>${side(g.b, 'b')}
+      </div>`;
+    }).join('');
+  }
+
   /* -------------------------------------------------------------- routing */
 
   function showView(name, { pushHash = true } = {}) {
@@ -1327,12 +1400,14 @@
   }
 
   /** During the playoffs the live board is the whole point, so refresh it. */
+  /** Refresh whichever live surface the person is actually looking at. */
   function scheduleRefresh() {
     clearInterval(state.refreshTimer);
-    if (!inPlayoffs()) return;
+    if (!liveWeek()) return;
     state.refreshTimer = setInterval(async () => {
-      if (document.hidden || state.view !== 'playoffs') return;
-      await renderPlayoffs(true);
+      if (document.hidden) return;
+      if (state.view === 'playoffs' && inPlayoffs()) { await renderPlayoffs(true); return; }
+      if (state.view === 'home') await renderLive();
     }, 90000);
   }
 
